@@ -726,7 +726,7 @@ function bossFight(st, S, agg, ctx, team, ateam) {
     const sk = D.skills[c.skill];
     return { id, c, lv, sk, ar, cm, normal: S.nr * ar * cm * S.spd * as * NORMAL_K, deals: !!(sk && sk.effects.some(e => e.type === 'Attack')), casts: [] };
   });
-  const ready = O.map(o => o.sk ? 0 : Infinity);
+  const ready = O.map((o, i) => o.sk ? (TM.noQueue ? i * TM.ogap : 0) : Infinity);
   for (let t = 0; t < FIGHT_S;) {
     let p = -1;
     for (let i = 0; i < O.length; i++) if (ready[i] <= t + 1e-9 && (p < 0 || ready[i] < ready[p] - 1e-9)) p = i;
@@ -738,7 +738,8 @@ function bossFight(st, S, agg, ctx, team, ateam) {
       else if (e.type !== 'Attack') addBuff('o' + p, e, v, t);
     }
     ready[p] = t + TM.cdCast * o.sk.castMs / 1000 + o.sk.recastMs / 1000 * (1 - S.cdr);
-    t += Math.max(0.05, TM.ogap + jit());
+    t += TM.noQueue ? 0.001 : Math.max(0.05, TM.ogap + jit());
+    if (TM.noQueue) ready[p] += jit();
   }
   // assists
   const tl = assistTimeline(ateam, S.acdr);
@@ -1859,6 +1860,7 @@ function normalize(s) {
   o.candy = Object.assign({ have: 20, days: 3, rate: 0 }, o.candy || {});
   o.gacha = { wt: Object.assign({ lv: 1, prog: 0 }, (o.gacha || {}).wt), as: Object.assign({ lv: 1, prog: 0 }, (o.gacha || {}).as), gems: +(o.gacha || {}).gems || 0 };
   o.statsAuto = o.statsAuto || {};
+  o.orderTests = Array.isArray(o.orderTests) ? o.orderTests : [];  // boss fights you've run: {team: [outfit ids in slot order], runs: [damage]}
   o.weapons = o.weapons || {}; o.tools = o.tools || {}; o.weaponEq = +o.weaponEq || 0; o.toolEq = +o.toolEq || 0;
   o.fest = Object.assign({ rank: 1, boost: false }, o.fest || {});
   o.kcSlots = 1;
@@ -2594,11 +2596,50 @@ function sectionTeam() {
         <span class="row" style="gap:4px"><button class="mv" data-mv="team:${i}:-1" aria-label="Move up"${i ? '' : ' disabled'}>↑</button><button class="mv" data-mv="team:${i}:1" aria-label="Move down"${i < 5 ? '' : ' disabled'}>↓</button></span>${firesOf(id) ? `<span class="fires">${firesOf(id)}</span>` : ''}</div>`).join('')}</div>
       <div class="row"><button class="btn primary" id="find-team">Find best team &amp; order</button><span class="muted small" id="team-status"></span></div>
       <div id="team-result"></div>
-    </section>`;
+    </section>
+    <section class="card stack" id="order-tests"></section>`;
+  renderOrderTests();
   f.querySelectorAll('select[id^=team-]').forEach(sel => sel.onchange = () => setSlot(+sel.id.split('-')[1], sel.value ? +sel.value : null));
   f.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => { const [, i, d] = b.dataset.mv.split(':'); moveSlot(+i, +d); });
   $('#find-team').onclick = runTeam;
   renderTeamResult();
+}
+/* Your own boss-fight results per team order. The fight model can't see everything (your tests showed orders it
+   rates the same differing by 8%), so measured averages are the final word on order. */
+function renderOrderTests() {
+  const box = $('#order-tests'); if (!box) return;
+  const key = t => t.join(',');
+  const now = teamOf(st), nowKey = key(now);
+  const mean = r => r.reduce((a, b) => a + b, 0) / r.length;
+  const tests = st.orderTests.filter(t => t.runs.length).slice().sort((a, b) => mean(b.runs) - mean(a.runs));
+  const best = tests[0];
+  const label = t => t.map(id => COSTUME[id] ? charName(COSTUME[id].char) : '?').join(' → ');
+  box.innerHTML = `<div class="row" style="justify-content:space-between"><h2>Your fight tests</h2><span class="muted small">best average first</span></div>
+    <p class="muted small" style="margin:0">Run the same boss with an order, then log the total damage here (e.g. 262v). Each order collects its runs; the best measured order beats any estimate. Results often land on a few exact values: a big hit either catches a buff or just misses it.</p>
+    <div class="row" style="gap:6px;align-items:flex-end"><label for="ot-val" class="small" style="flex:1">Damage with your current order${now.length === 6 ? '' : ' (fill all 6 slots first)'}
+      <input type="text" id="ot-val" inputmode="text" autocomplete="off" placeholder="262v" style="width:100%"></label>
+      <button class="btn primary" id="ot-add"${now.length === 6 ? '' : ' disabled'}>Log fight</button></div>
+    ${tests.length ? `<ol class="rank">${tests.map((t, i) => { const m = mean(t.runs), lo = Math.min(...t.runs), hi = Math.max(...t.runs), isNow = key(t.team) === nowKey;
+      return `<li class="up${i === 0 ? ' top' : ''}"><span class="pos">${i + 1}</span>
+        <div class="what"><div class="name">${esc(label(t.team))}${isNow ? ' <span class="pill">current</span>' : ''}</div>
+          <div class="act">${t.runs.length} run${t.runs.length === 1 ? '' : 's'} · ${lo === hi ? 'same every time' : `${esc(fmtNum(lo))}–${esc(fmtNum(hi))}`}</div></div>
+        <div class="gain" style="color:var(--ink)">${esc(fmtNum(m))}</div>
+        <div class="meta"><span>${esc(t.runs.map(fmtNum).join(', '))}</span>
+          ${isNow ? '' : `<button class="btn done" data-ot-use="${i}">Use this order</button>`}<button class="btn ghost" data-ot-undo="${i}" aria-label="Remove the last run">Remove last run</button></div></li>`; }).join('')}</ol>` : ''}`;
+  const add = $('#ot-add');
+  if (add) add.onclick = () => {
+    const v = parseNum($('#ot-val').value);
+    if (!(v > 0)) { toast('Type the damage the fight showed, e.g. 262v'); return; }
+    let t = st.orderTests.find(x => key(x.team) === nowKey);
+    if (!t) { t = { team: now.slice(), runs: [] }; st.orderTests.push(t); }
+    t.runs.push(v); scheduleSave(); renderOrderTests(); toast('Fight logged');
+  };
+  box.querySelectorAll('[data-ot-use]').forEach(b => b.onclick = () => { st.team = tests[+b.dataset.otUse].team.slice(); changed('quiet'); sectionTeam(); renderRanking(); toast('Order updated'); });
+  box.querySelectorAll('[data-ot-undo]').forEach(b => b.onclick = () => {
+    const t = tests[+b.dataset.otUndo]; t.runs.pop();
+    if (!t.runs.length) st.orderTests = st.orderTests.filter(x => x !== t);
+    scheduleSave(); renderOrderTests();
+  });
 }
 function setSlot(i, id) {
   const arr = st.team.slice(); while (arr.length < 6) arr.push(null);
@@ -2633,7 +2674,9 @@ function renderTeamResult() {
   const reo = r.reorder && r.reorder.team.join() !== teamOf(st).join() && r.reorder.team.slice().sort().join() !== r.team.slice().sort().join() ? r.reorder : null;
   const cur = r.base0 || summary(st, base).total;
   const steady = sp => sp < 0.04 ? 'steady from fight to fight' : `can swing about ±${Math.round(sp * 50)}% from fight to fight (timing-sensitive)`;
-  box.innerHTML = `<div class="result"><div><b>${fmtPct(r.gain)}</b> fight damage vs your current team · checked ${r.evaluated.toLocaleString('en-US')} teams and orders</div>
+  const measured = st.orderTests.filter(t => t.runs.length >= 2);
+  const note = measured.length ? '<div class="small" style="color:var(--pink)">You have measured fights below. The estimate can\'t see every timing detail, so trust your best measured order over this one, or test this one a few times.</div>' : '';
+  box.innerHTML = `${note}<div class="result"><div><b>${fmtPct(r.gain)}</b> fight damage vs your current team · checked ${r.evaluated.toLocaleString('en-US')} teams and orders</div>
     <div class="small muted">This order: ${steady(r.spread || 0)}${r.current ? ` · yours now: ${steady(r.current.spread)}` : ''}.</div>
     <ol>${r.team.map(id => `<li>${esc(costumeName(COSTUME[id]))}</li>`).join('')}</ol>
     ${r.gain < 1e-6 ? '<div class="small">Your team is already the best, in the best order.</div>'
