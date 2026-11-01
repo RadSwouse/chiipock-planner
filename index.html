@@ -694,14 +694,14 @@ function assistTimeline(ateam, acdr) {
    and debuffs up at that moment, and normal attacks by the buffs up while they're swinging, so buffs placed before
    the big hitters pay off. Shisa-style resets cut the remaining cooldown of damage-dealing specials. */
 const OUTFIT_GAP = 1;
-/* Fitted Oct 31 to two team orders run 7 times each (Momonga, Chiikawa, Rakko, … steady at 240v; Momonga, Rakko, …,
-   Chiikawa swinging 207–251v): a special's hit lands about 2 s after it goes off (its buff/debuff starts right away),
-   and debuffs of one kind add up (two −DEF% debuffs give 1 + a + b, not (1 + a)(1 + b)). Small timing wobble in the
-   game is why an order whose hits land right at a buff's edge swings from fight to fight, so orders are picked on the
-   average of a few wobbled fights (robustRuns). Another reading also fits (cooldowns start when a special goes off,
-   with no hit delay); counting one outfit's specials in a fight tells them apart: Mermaid Island Hachiware fires 6
-   times here, 8 under the other reading. */
-var TIMING = { ogap: 1, dmgDelay: 2, buffDelay: 0, jitter: 0, cdCast: 1, defAdd: true, rand: Math.random };
+/* Timing fitted to boss fights run with 9 different orders of one team (Nov 1): specials are all charged at the start
+   and go off about 1.1 s apart in slot order, then whoever is ready first; a special's cooldown starts about 0.75 s
+   into its 3 s animation; debuffs of one kind add up (two −DEF% debuffs give 1 + a + b, not (1 + a)(1 + b)); and the
+   damage that counts is about the first 34 s. Small timing wobble in the game makes an order whose hits land right at
+   a buff's edge (or right at the end of the fight) swing between fights, so orders are scored on the average of a few
+   wobbled fights (robustRuns). Fit error across those orders: about 2%, so orders within 2% are treated as a tie. */
+var TIMING = { ogap: 1.1, dmgDelay: 0, buffDelay: 0, jitter: 0, cdCast: 0.25, defAdd: true, fight: 34, rand: Math.random };
+const ORDER_TIE = 1.02;  // the fight model can't tell orders apart closer than this (its error on the tested orders)
 function robustRuns(fn, k = 6, jitter = 0.15) {
   const keep = Object.assign({}, TIMING); let tot = 0, lo = Infinity, hi = 0;
   for (let i = 0; i < k; i++) {
@@ -713,6 +713,7 @@ function robustRuns(fn, k = 6, jitter = 0.15) {
   return { mean: tot / k, spread: tot > 0 ? (hi - lo) / (tot / k) : 0 };
 }  // experiment knobs (see bossFight)
 function bossFight(st, S, agg, ctx, team, ateam) {
+  const FIGHT_S = TIMING.fight || 35;
   const TM = TIMING, jit = () => TM.jitter ? (TM.rand() * 2 - 1) * TM.jitter : 0;
   const ivs = [];  // buff/debuff windows: {src, type, calc, v, a, b}
   const addBuff = (src, e, v, t) => {
@@ -1424,13 +1425,15 @@ function bestTeam(st, base, locked = {}) {
     return bo;
   };
   const now = teamOf(st);
-  const nowBest = now.length === 6 ? bestOrder(now) : null;
+  const curR = now.length === 6 ? rs(now) : null;
+  let nowBest = now.length === 6 ? bestOrder(now) : null;
+  // your own order stands unless another beats it by more than the model can resolve
+  if (nowBest && nowBest.total <= curR.mean * ORDER_TIE) nowBest = { team: now.slice(), total: curR.mean, spread: curR.spread };
   let win = nowBest;
   for (const c of tops) {
     if (nowBest && c.team.slice().sort().join() === now.slice().sort().join()) continue;
-    const bo = bestOrder(c.team); if (!win || bo.total > win.total * 1.001) win = bo;  // a new team must beat yours by 0.1%
+    const bo = bestOrder(c.team); if (!win || bo.total > win.total * ORDER_TIE) win = bo;
   }
-  const curR = now.length === 6 ? rs(now) : null;
   return { team: win.team, total: win.total, spread: win.spread, evaluated: n, current: curR, reorder: nowBest };
 }
 /* Best 6 assists, the order to equip them in, and each character's keychain, chosen together: a keychain's star
@@ -1860,7 +1863,6 @@ function normalize(s) {
   o.candy = Object.assign({ have: 20, days: 3, rate: 0 }, o.candy || {});
   o.gacha = { wt: Object.assign({ lv: 1, prog: 0 }, (o.gacha || {}).wt), as: Object.assign({ lv: 1, prog: 0 }, (o.gacha || {}).as), gems: +(o.gacha || {}).gems || 0 };
   o.statsAuto = o.statsAuto || {};
-  o.orderTests = Array.isArray(o.orderTests) ? o.orderTests : [];  // boss fights you've run: {team: [outfit ids in slot order], runs: [damage]}
   o.weapons = o.weapons || {}; o.tools = o.tools || {}; o.weaponEq = +o.weaponEq || 0; o.toolEq = +o.toolEq || 0;
   o.fest = Object.assign({ rank: 1, boost: false }, o.fest || {});
   o.kcSlots = 1;
@@ -2590,56 +2592,17 @@ function sectionTeam() {
       `<option value="${id}"${id == sel ? ' selected' : ''}>${esc(costumeName(COSTUME[id]))} · Lv ${st.costumes[id].lv}</option>`).join('')}</optgroup>`).join('');
   f.innerHTML = `<section class="card stack">
       <div class="row" style="justify-content:space-between"><h2>Your team</h2><span class="muted small">slot 1 fires first</span></div>
-      <p class="muted small" style="margin:0">One outfit per character. In a boss fight (35 s) every special is charged at the start and they go off in slot order, 1 s apart, then whoever is ready first. Buffs and debuffs only help the hits that land while they're up, so order matters.</p>
+      <p class="muted small" style="margin:0">One outfit per character. In a boss fight (35 s) every special is charged at the start and they go off in slot order about 1 s apart, then whoever is ready first. Buffs and debuffs only help the hits that land while they're up, so order matters.</p>
       <div class="slots">${team.map((id, i) => `<div class="slot"><span class="i">${i + 1}</span>
         <select id="team-${i}" aria-label="Team slot ${i + 1}">${cosOptions(id)}</select>
         <span class="row" style="gap:4px"><button class="mv" data-mv="team:${i}:-1" aria-label="Move up"${i ? '' : ' disabled'}>↑</button><button class="mv" data-mv="team:${i}:1" aria-label="Move down"${i < 5 ? '' : ' disabled'}>↓</button></span>${firesOf(id) ? `<span class="fires">${firesOf(id)}</span>` : ''}</div>`).join('')}</div>
       <div class="row"><button class="btn primary" id="find-team">Find best team &amp; order</button><span class="muted small" id="team-status"></span></div>
       <div id="team-result"></div>
-    </section>
-    <section class="card stack" id="order-tests"></section>`;
-  renderOrderTests();
+    </section>`;
   f.querySelectorAll('select[id^=team-]').forEach(sel => sel.onchange = () => setSlot(+sel.id.split('-')[1], sel.value ? +sel.value : null));
   f.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => { const [, i, d] = b.dataset.mv.split(':'); moveSlot(+i, +d); });
   $('#find-team').onclick = runTeam;
   renderTeamResult();
-}
-/* Your own boss-fight results per team order. The fight model can't see everything (your tests showed orders it
-   rates the same differing by 8%), so measured averages are the final word on order. */
-function renderOrderTests() {
-  const box = $('#order-tests'); if (!box) return;
-  const key = t => t.join(',');
-  const now = teamOf(st), nowKey = key(now);
-  const mean = r => r.reduce((a, b) => a + b, 0) / r.length;
-  const tests = st.orderTests.filter(t => t.runs.length).slice().sort((a, b) => mean(b.runs) - mean(a.runs));
-  const best = tests[0];
-  const label = t => t.map(id => COSTUME[id] ? charName(COSTUME[id].char) : '?').join(' → ');
-  box.innerHTML = `<div class="row" style="justify-content:space-between"><h2>Your fight tests</h2><span class="muted small">best average first</span></div>
-    <p class="muted small" style="margin:0">Run the same boss with an order, then log the total damage here (e.g. 262v). Each order collects its runs; the best measured order beats any estimate. Results often land on a few exact values: a big hit either catches a buff or just misses it.</p>
-    <div class="row" style="gap:6px;align-items:flex-end"><label for="ot-val" class="small" style="flex:1">Damage with your current order${now.length === 6 ? '' : ' (fill all 6 slots first)'}
-      <input type="text" id="ot-val" inputmode="text" autocomplete="off" placeholder="262v" style="width:100%"></label>
-      <button class="btn primary" id="ot-add"${now.length === 6 ? '' : ' disabled'}>Log fight</button></div>
-    ${tests.length ? `<ol class="rank">${tests.map((t, i) => { const m = mean(t.runs), lo = Math.min(...t.runs), hi = Math.max(...t.runs), isNow = key(t.team) === nowKey;
-      return `<li class="up${i === 0 ? ' top' : ''}"><span class="pos">${i + 1}</span>
-        <div class="what"><div class="name">${esc(label(t.team))}${isNow ? ' <span class="pill">current</span>' : ''}</div>
-          <div class="act">${t.runs.length} run${t.runs.length === 1 ? '' : 's'} · ${lo === hi ? 'same every time' : `${esc(fmtNum(lo))}–${esc(fmtNum(hi))}`}</div></div>
-        <div class="gain" style="color:var(--ink)">${esc(fmtNum(m))}</div>
-        <div class="meta"><span>${esc(t.runs.map(fmtNum).join(', '))}</span>
-          ${isNow ? '' : `<button class="btn done" data-ot-use="${i}">Use this order</button>`}<button class="btn ghost" data-ot-undo="${i}" aria-label="Remove the last run">Remove last run</button></div></li>`; }).join('')}</ol>` : ''}`;
-  const add = $('#ot-add');
-  if (add) add.onclick = () => {
-    const v = parseNum($('#ot-val').value);
-    if (!(v > 0)) { toast('Type the damage the fight showed, e.g. 262v'); return; }
-    let t = st.orderTests.find(x => key(x.team) === nowKey);
-    if (!t) { t = { team: now.slice(), runs: [] }; st.orderTests.push(t); }
-    t.runs.push(v); scheduleSave(); renderOrderTests(); toast('Fight logged');
-  };
-  box.querySelectorAll('[data-ot-use]').forEach(b => b.onclick = () => { st.team = tests[+b.dataset.otUse].team.slice(); changed('quiet'); sectionTeam(); renderRanking(); toast('Order updated'); });
-  box.querySelectorAll('[data-ot-undo]').forEach(b => b.onclick = () => {
-    const t = tests[+b.dataset.otUndo]; t.runs.pop();
-    if (!t.runs.length) st.orderTests = st.orderTests.filter(x => x !== t);
-    scheduleSave(); renderOrderTests();
-  });
 }
 function setSlot(i, id) {
   const arr = st.team.slice(); while (arr.length < 6) arr.push(null);
@@ -2674,12 +2637,10 @@ function renderTeamResult() {
   const reo = r.reorder && r.reorder.team.join() !== teamOf(st).join() && r.reorder.team.slice().sort().join() !== r.team.slice().sort().join() ? r.reorder : null;
   const cur = r.base0 || summary(st, base).total;
   const steady = sp => sp < 0.04 ? 'steady from fight to fight' : `can swing about ±${Math.round(sp * 50)}% from fight to fight (timing-sensitive)`;
-  const measured = st.orderTests.filter(t => t.runs.length >= 2);
-  const note = measured.length ? '<div class="small" style="color:var(--pink)">You have measured fights below. The estimate can\'t see every timing detail, so trust your best measured order over this one, or test this one a few times.</div>' : '';
-  box.innerHTML = `${note}<div class="result"><div><b>${fmtPct(r.gain)}</b> fight damage vs your current team · checked ${r.evaluated.toLocaleString('en-US')} teams and orders</div>
+  box.innerHTML = `<div class="result"><div><b>${fmtPct(r.gain)}</b> fight damage vs your current team · checked ${r.evaluated.toLocaleString('en-US')} teams and orders</div>
     <div class="small muted">This order: ${steady(r.spread || 0)}${r.current ? ` · yours now: ${steady(r.current.spread)}` : ''}.</div>
     <ol>${r.team.map(id => `<li>${esc(costumeName(COSTUME[id]))}</li>`).join('')}</ol>
-    ${r.gain < 1e-6 ? '<div class="small">Your team is already the best, in the best order.</div>'
+    ${r.gain < 1e-6 ? '<div class="small">Your team and order are already the best the planner can find. It treats orders within 2% as a tie, since that\'s as finely as its fight model matches real fights.</div>'
       : r.team.slice().sort().join() === teamOf(st).slice().sort().join() ? '<div class="small">Same outfits as now, in a better order.</div><div class="row"><button class="btn primary" id="use-team">Use this order</button></div>'
       : '<div class="row"><button class="btn primary" id="use-team">Use this team</button></div>'}</div>
     ${reo ? `<div class="result"><div>Or keep your outfits and only change the order: <b>${fmtPct(cur > 0 ? reo.total / cur - 1 : 0)}</b></div>
