@@ -684,7 +684,7 @@ function assistTimeline(ateam, acdr) {
     if (pick < 0) { t = Math.max(t, Math.min(...ready)); if (!isFinite(t)) break; continue; }
     times[pick].push(t);
     const sk = D.skills[ASSIST[ateam[pick]].skill];
-    ready[pick] = sk ? t + sk.castMs / 1000 + sk.recastMs / 1000 * (1 - acdr) : Infinity;
+    ready[pick] = sk ? t + TIMING.cdCast * sk.castMs / 1000 + sk.recastMs / 1000 * (1 - acdr) : Infinity;
     t += ASSIST_GAP;
   }
   return times;
@@ -694,11 +694,30 @@ function assistTimeline(ateam, acdr) {
    and debuffs up at that moment, and normal attacks by the buffs up while they're swinging, so buffs placed before
    the big hitters pay off. Shisa-style resets cut the remaining cooldown of damage-dealing specials. */
 const OUTFIT_GAP = 1;
+/* Fitted Oct 31 to two team orders run 7 times each (Momonga, Chiikawa, Rakko, … steady at 240v; Momonga, Rakko, …,
+   Chiikawa swinging 207–251v): a special's hit lands about 2 s after it goes off (its buff/debuff starts right away),
+   and debuffs of one kind add up (two −DEF% debuffs give 1 + a + b, not (1 + a)(1 + b)). Small timing wobble in the
+   game is why an order whose hits land right at a buff's edge swings from fight to fight, so orders are picked on the
+   average of a few wobbled fights (robustRuns). Another reading also fits (cooldowns start when a special goes off,
+   with no hit delay); counting one outfit's specials in a fight tells them apart: Mermaid Island Hachiware fires 6
+   times here, 8 under the other reading. */
+var TIMING = { ogap: 1, dmgDelay: 2, buffDelay: 0, jitter: 0, cdCast: 1, defAdd: true, rand: Math.random };
+function robustRuns(fn, k = 6, jitter = 0.15) {
+  const keep = Object.assign({}, TIMING); let tot = 0, lo = Infinity, hi = 0;
+  for (let i = 0; i < k; i++) {
+    let seed = 1013 + i * 7919;
+    Object.assign(TIMING, { jitter, rand: () => (seed = (seed * 16807) % 2147483647) / 2147483647 });
+    const v = fn(); tot += v; lo = Math.min(lo, v); hi = Math.max(hi, v);
+  }
+  Object.assign(TIMING, keep);
+  return { mean: tot / k, spread: tot > 0 ? (hi - lo) / (tot / k) : 0 };
+}  // experiment knobs (see bossFight)
 function bossFight(st, S, agg, ctx, team, ateam) {
+  const TM = TIMING, jit = () => TM.jitter ? (TM.rand() * 2 - 1) * TM.jitter : 0;
   const ivs = [];  // buff/debuff windows: {src, type, calc, v, a, b}
   const addBuff = (src, e, v, t) => {
     if (!['StatusAttackUp', 'StatusBossDamageUp', 'StatusCriticalRateUp', 'StatusCriticalAttackUp', 'StatusDefenceDown', 'StatusCriticalDefenceDown'].includes(e.type)) return;
-    ivs.push({ src, type: e.type, calc: e.calc, v, a: t, b: Math.min(FIGHT_S, t + (e.buffSec || 0)) });
+    const a0 = t + TM.buffDelay; ivs.push({ src, type: e.type, calc: e.calc, v, a: a0, b: Math.min(FIGHT_S, a0 + (e.buffSec || 0)) });
   };
   // outfits
   const O = team.map(id => {
@@ -718,8 +737,8 @@ function bossFight(st, S, agg, ctx, team, ateam) {
       if (e.type === 'RecastReset') { const f = Math.min(1, v); for (let j = 0; j < O.length; j++) if (j !== p && O[j].deals && ready[j] > t) ready[j] = t + (ready[j] - t) * (1 - f); }
       else if (e.type !== 'Attack') addBuff('o' + p, e, v, t);
     }
-    ready[p] = t + o.sk.castMs / 1000 + o.sk.recastMs / 1000 * (1 - S.cdr);
-    t += OUTFIT_GAP;
+    ready[p] = t + TM.cdCast * o.sk.castMs / 1000 + o.sk.recastMs / 1000 * (1 - S.cdr);
+    t += Math.max(0.05, TM.ogap + jit());
   }
   // assists
   const tl = assistTimeline(ateam, S.acdr);
@@ -741,7 +760,7 @@ function bossFight(st, S, agg, ctx, team, ateam) {
       const m = w.calc === 'Multiple' ? w.v : 1 + w.v;
       if (w.type === 'StatusAttackUp') atk *= m; else if (w.type === 'StatusBossDamageUp') boss *= m;
       else if (w.type === 'StatusCriticalRateUp') cr += w.v; else if (w.type === 'StatusCriticalAttackUp') cd += w.v;
-      else if (w.type === 'StatusDefenceDown') def *= 1 + w.v; else if (w.type === 'StatusCriticalDefenceDown') cdef *= 1 + w.v;
+      else if (w.type === 'StatusDefenceDown') { if (TM.defAdd) def += w.v; else def *= 1 + w.v; } else if (w.type === 'StatusCriticalDefenceDown') { if (TM.defAdd) cdef += w.v; else cdef *= 1 + w.v; }
     }
     const ce = 1 + Math.min(1, Math.max(0, S.cr + cr + ecr)) * ((S.cd + cd + ecd) * cdef - 1);
     return atk * boss * def * ce;
@@ -752,7 +771,7 @@ function bossFight(st, S, agg, ctx, team, ateam) {
     let sp = 0;
     if (o.sk) for (const e of o.sk.effects) if (e.type === 'Attack') {
       const hit = lrvRow(e.lv, o.lv) * o.c.coef * o.ar * o.cm * S.sr * S.ur;
-      for (const t of o.casts) sp += hit * at(t);
+      for (const t of o.casts) if (t + TM.dmgDelay < FIGHT_S) sp += hit * at(t + TM.dmgDelay);
     }
     special += sp;
     return { id: o.id, char: o.c.char, normal: o.normal, special: sp * k / FIGHT_S, casts: o.casts, nuke: o.deals,
@@ -1384,22 +1403,34 @@ function bestTeam(st, base, locked = {}) {
     }
     lists[ch] = keep;
   }
-  let best = null, bestT = -1, n = 0;
+  let n = 0; const tops = [];  // the best few teams (any order), re-checked below in every order
   for (const combo of combinations(chars, 6)) {
     if (Object.keys(locked).some(ch => !combo.includes(+ch))) continue;
     for (const team of cartesian(combo.map(ch => lists[ch]))) {
       const t = score(team); n++;
-      if (t > bestT) { bestT = t; best = team.slice(); }
+      if (tops.length < 3 || t > tops[tops.length - 1].t) { tops.push({ t, team: team.slice() }); tops.sort((a, b) => b.t - a.t); if (tops.length > 3) tops.pop(); }
     }
   }
   // then every equip order of that team (specials fire in equip order at the start of a fight)
-  let ordered = best, ot = -1;
-  for (const perm of permutations(best)) { const t = score(perm); n++; if (t > ot * (1 + 1e-9)) { ot = t; ordered = perm; } }
-  // the current team in its best order too, so the advice can say how much the order alone is worth
-  const now = teamOf(st); let nowBest = now, nt = -1;
-  if (now.length === 6) for (const perm of permutations(now)) { const t = score(perm); if (t > nt * (1 + 1e-9)) { nt = t; nowBest = perm; } }
-  return { team: ordered, total: evaluate(withChange(st, x => { x.team = ordered; }), base).battle, evaluated: n,
-    reorder: now.length === 6 ? { team: nowBest, total: evaluate(withChange(st, x => { x.team = nowBest; }), base).battle } : null };
+  // (averaged over a few slightly wobbled fights, so an order that only works when timing is exact loses out;
+  // the 60 best orders on exact timing get the wobble test)
+  const rs = team => robustRuns(() => score(team), 4);
+  const bestOrder = team => {
+    const det = []; for (const perm of permutations(team)) { det.push([score(perm), perm]); n++; }
+    det.sort((a, b) => b[0] - a[0]);
+    let bo = null;
+    for (const [, perm] of det.slice(0, 60)) { const r = rs(perm); n++; if (!bo || r.mean > bo.total * (1 + 1e-9)) bo = { team: perm, total: r.mean, spread: r.spread }; }
+    return bo;
+  };
+  const now = teamOf(st);
+  const nowBest = now.length === 6 ? bestOrder(now) : null;
+  let win = nowBest;
+  for (const c of tops) {
+    if (nowBest && c.team.slice().sort().join() === now.slice().sort().join()) continue;
+    const bo = bestOrder(c.team); if (!win || bo.total > win.total * 1.001) win = bo;  // a new team must beat yours by 0.1%
+  }
+  const curR = now.length === 6 ? rs(now) : null;
+  return { team: win.team, total: win.total, spread: win.spread, evaluated: n, current: curR, reorder: nowBest };
 }
 /* Best 6 assists, the order to equip them in, and each character's keychain, chosen together: a keychain's star
    bonuses only count while its assist is equipped, so an assist that does little itself can be worth a slot for the
@@ -1788,7 +1819,7 @@ if (typeof module !== 'undefined') module.exports = {
   fmtNum, parseNum, fmtPct, group, fxVal, lrvRow, expCost, blankState, context, buildEffects, aggregate,
   effectiveStats, evaluate, makeBaseline, candidates, efficiency, bestTeam, bestAssists, bestKeychains, keychainChallengers, bestGear, GEAR, summary,
   boothPlan, boothSettings, slotRate, BOOTH_DISH, STARS, nodeCost, guideLevel, guideMissing, homeLv, sceneOpen, homeName, HOME, COSTUME, ASSIST, FOOD, TREASURE, KEYCHAIN, GUIDE, STAR, STATS, SHORT, RES, charName, assistName, costumeName,
-  condText, assistStar, withChange, predictStats, gachaPool, gachaGains, gachaValue, gachaPlan, gachaLevelNeed, gachaMax, GACHA_NAMES, GACHA_DRAWS, clone, teamOf, assistTeamOf, DEFAULT_STACK, stackMode, statValues, bestDisplay,
+  condText, assistStar, withChange, predictStats, TIMING, gachaPool, gachaGains, gachaValue, gachaPlan, gachaLevelNeed, gachaMax, GACHA_NAMES, GACHA_DRAWS, clone, teamOf, assistTeamOf, DEFAULT_STACK, stackMode, statValues, bestDisplay,
 };
 
 </script>
@@ -2589,7 +2620,8 @@ function runTeam() {
   setTimeout(() => {
     const cur = summary(st, base).total;
     const r = bestTeam(st, base);
-    ui.teamResult = r.error ? { error: r.error } : Object.assign(r, { gain: cur > 0 ? r.total / cur - 1 : 0 });
+    const c0 = r.current ? r.current.mean : cur;
+    ui.teamResult = r.error ? { error: r.error } : Object.assign(r, { gain: c0 > 0 ? r.total / c0 - 1 : 0, base0: c0 });
     if ($('#team-status')) $('#team-status').textContent = '';
     renderTeamResult();
   }, 30);
@@ -2599,8 +2631,10 @@ function renderTeamResult() {
   const r = ui.teamResult; if (!r) { box.innerHTML = ''; return; }
   if (r.error) { box.innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
   const reo = r.reorder && r.reorder.team.join() !== teamOf(st).join() && r.reorder.team.slice().sort().join() !== r.team.slice().sort().join() ? r.reorder : null;
-  const cur = summary(st, base).total;
+  const cur = r.base0 || summary(st, base).total;
+  const steady = sp => sp < 0.04 ? 'steady from fight to fight' : `can swing about ±${Math.round(sp * 50)}% from fight to fight (timing-sensitive)`;
   box.innerHTML = `<div class="result"><div><b>${fmtPct(r.gain)}</b> fight damage vs your current team · checked ${r.evaluated.toLocaleString('en-US')} teams and orders</div>
+    <div class="small muted">This order: ${steady(r.spread || 0)}${r.current ? ` · yours now: ${steady(r.current.spread)}` : ''}.</div>
     <ol>${r.team.map(id => `<li>${esc(costumeName(COSTUME[id]))}</li>`).join('')}</ol>
     ${r.gain < 1e-6 ? '<div class="small">Your team is already the best, in the best order.</div>'
       : r.team.slice().sort().join() === teamOf(st).slice().sort().join() ? '<div class="small">Same outfits as now, in a better order.</div><div class="row"><button class="btn primary" id="use-team">Use this order</button></div>'
