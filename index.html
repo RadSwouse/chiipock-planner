@@ -600,13 +600,28 @@ function srcCat(src) {
 }
 var CAT_EQUIP = { treq: 'equip', kceq: 'equip' };
 const TRAIN_NODE = {}; for (const n of D.training) TRAIN_NODE[n.id] = n;
+/* Keychain star bonuses (checked Nov 8 against three swaps): they count whether or not their assist is equipped (the
+   ones aimed at the assist itself only matter while it is), and when two equipped keychains share an assist only one
+   of them counts: the higher star, then the higher level. E.g. a second 4★ Nagareboshi adds nothing while Shisa wears
+   one, and a 4★ Manbou on Rakko adds its damage bonuses with Manbou not equipped (and beat 4★ Taiyaki by the 2.6v the
+   two keychains' bonuses differ by). */
+function kcLeads(st) {
+  const lead = {}, rank = {};
+  for (const id in st.keychains) {
+    const s = st.keychains[id], k = KEYCHAIN[id]; if (!s.eq || !k || !(s.star >= 1)) continue;
+    const r = s.star * 1000 + (s.lv || 1);
+    if (!(rank[k.assist] >= r)) { rank[k.assist] = r; lead[k.assist] = id; }
+  }
+  return lead;
+}
 function aggregate(effects, ctx, st) {
+  const leads = kcLeads(st);
   const acct = {}; const flat = {}; const chars = {}; const assists = {};
   const bump = (o, cat, v) => { o[cat] = (o[cat] || 0) + v; };
   for (const e of effects) {
     if (e.cond && !condMet(e.cond, ctx)) continue;
     if (e.kc && !(st.keychains[e.kc] && st.keychains[e.kc].eq)) continue;
-    if (e.needA && !ctx.achars.has(e.needA)) continue;
+    if (e.needA && leads[e.needA] !== e.kc) continue;  // one keychain's star bonuses per assist (see kcLeads)
     if (e.kc && TIMING.kcTeamOnly && !ctx.chars.has(KEYCHAIN[e.kc].char)) continue;  // untested idea: keychains only count for characters on the team
     const cat = e.cat || (e.cat = srcCat(e.src));
     if (e.scope === 'acct') {
