@@ -942,7 +942,7 @@ function resetCycle(R, B, resets) {
    skills, cooldowns or buffs. Fitted to the game: 18 Little House swaps, 6 "You Look Like" swaps, two keychain
    level-ups (Momonga vs Rakko ×0.677, exactly as predicted) and the food tests. Normal Attack Damage barely moves it
    (about 0.2%), so it enters with a small calibrated weight next to Special × Special & Assist damage. */
-var BANNER_NK = 5;
+var BANNER_NK = 4.55;  // weight of Normal Attack Damage in the banner: fitted Nov 8 to a Butter & Soy Sauce Udon level (+3.17t on ~175v)
 /* The battle banner multiplies in both damage-to-bosses and damage-to-non-bosses (checked Oct 31: a 4★ keychain's
    non-boss bonus moved it ×1.46, and Lively Lights' boss bonus moved it as predicted). A real fight only gets one of
    them, so upgrades are ranked with the one for the chosen fight (shown = false) and the banner estimate uses both. */
@@ -3069,7 +3069,7 @@ function renderSettings() {
       <h2>Your status screen</h2>
       <p class="muted small" style="margin:0">When you press ✓ Done or "I've equipped these", the planner moves these numbers by what it predicts the change did; type the game's number over any that differ. Copy these from the in-game status screen, written the way the game shows them (<span class="num">850</span>, <span class="num">4.2a</span>, <span class="num">264i</span> all work). Open Edit → Stats in the game and copy the numbers. They already include study, training, weapons and every other source, so the planner can tell which stat is furthest behind. On a new account they all read 100%, except Critical Rate (0.1%) and Critical Damage (120%).</p>
       <div>${STAT_FIELDS.map(([k, label, unit, hint]) => `<div class="field"><label for="s-${k}">${label}${unit ? ' (' + unit + ')' : ''}${hint ? `<br><span class="hint">${hint}</span>` : ''}${st.statsAuto && st.statsAuto[k] ? '<br><span class="hint" style="color:var(--pink)">estimated after your upgrades: check it in game</span>' : ''}</label>
-        <input type="text" id="s-${k}" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" value="${esc(fmtNum(k === 'candy' ? candyStrength(st) * 100 : +st.stats[k] || 0))}"></div>`).join('')}</div>
+        <input type="text" id="s-${k}" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" value="${esc(fmtTrunc(k === 'candy' ? candyStrength(st) * 100 : +st.stats[k] || 0))}"></div>`).join('')}</div>
     </section>
     <section class="card stack">
       <h2>Rank upgrades by</h2>
@@ -3107,7 +3107,7 @@ function renderSettings() {
   v.querySelectorAll('input[id^=s-]').forEach(inp => inp.onchange = () => {
     const k = inp.id.slice(2); const n = parseNum(inp.value);
     if (!isFinite(n) || n < 0) { inp.value = fmtNum(+st.stats[k] || 0); toast('Use a number like 850 or 4.2a'); return; }
-    st.stats[k] = n; inp.value = fmtNum(n); if (st.statsAuto) delete st.statsAuto[k]; changed('quiet'); toast('Saved');
+    st.stats[k] = n; inp.value = fmtTrunc(n); if (st.statsAuto) delete st.statsAuto[k]; changed('quiet'); toast('Saved');
   });
   v.querySelectorAll('input[name=mode]').forEach(r => r.onchange = () => { st.mode = r.value; changed('quiet'); });
   v.querySelectorAll('input[name=rankby]').forEach(r => r.onchange = () => { st.rankBy = r.value; changed('quiet'); toast(r.value === 'battle' ? 'Ranking by the fight estimate' : 'Ranking by the battle banner'); });
