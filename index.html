@@ -600,11 +600,10 @@ function srcCat(src) {
 }
 var CAT_EQUIP = { treq: 'equip', kceq: 'equip' };
 const TRAIN_NODE = {}; for (const n of D.training) TRAIN_NODE[n.id] = n;
-/* Keychain star bonuses (checked Nov 8 against three swaps): they count whether or not their assist is equipped (the
-   ones aimed at the assist itself only matter while it is), and when two equipped keychains share an assist only one
-   of them counts: the higher star, then the higher level. E.g. a second 4★ Nagareboshi adds nothing while Shisa wears
-   one, and a 4★ Manbou on Rakko adds its damage bonuses with Manbou not equipped (and beat 4★ Taiyaki by the 2.6v the
-   two keychains' bonuses differ by). */
+/* Keychain star bonuses: they only count while the keychain's assist is equipped (kcGate; the Nov 8 swaps were run
+   with the matching assist swapped in, so they don't test this), and when two equipped keychains share an assist only
+   one of them counts (kcOnePer): the higher star, then the higher level. Swapping Chiikawa's 3★ Muchauman for a 2nd
+   4★ Nagareboshi (Shisa wears one) lost 30.6v: one-per-assist predicts −36.9v, letting both count predicts −13.2v. */
 function kcLeads(st) {
   const lead = {}, rank = {};
   for (const id in st.keychains) {
@@ -621,7 +620,8 @@ function aggregate(effects, ctx, st) {
   for (const e of effects) {
     if (e.cond && !condMet(e.cond, ctx)) continue;
     if (e.kc && !(st.keychains[e.kc] && st.keychains[e.kc].eq)) continue;
-    if (e.needA && leads[e.needA] !== e.kc) continue;  // one keychain's star bonuses per assist (see kcLeads)
+    if (e.needA && TIMING.kcGate && !ctx.achars.has(e.needA)) continue;  // star bonuses only while the assist is equipped
+    if (e.needA && TIMING.kcOnePer && leads[e.needA] !== e.kc) continue;  // one keychain's star bonuses per assist (see kcLeads)
     if (e.kc && TIMING.kcTeamOnly && !ctx.chars.has(KEYCHAIN[e.kc].char)) continue;  // untested idea: keychains only count for characters on the team
     const cat = e.cat || (e.cat = srcCat(e.src));
     if (e.scope === 'acct') {
@@ -726,7 +726,7 @@ const OUTFIT_GAP = 1;
    damage that counts is about the first 34 s. Small timing wobble in the game makes an order whose hits land right at
    a buff's edge (or right at the end of the fight) swing between fights, so orders are scored on the average of a few
    wobbled fights (robustRuns). Fit error across those orders: about 2%, so orders within 2% are treated as a tie. */
-var TIMING = { ogap: 1.1, dmgDelay: 0, buffDelay: 0, jitter: 0, cdCast: 0.25, defAdd: true, fight: 34, rand: Math.random };
+var TIMING = { kcGate: true, kcOnePer: true, ogap: 1.1, dmgDelay: 0, buffDelay: 0, jitter: 0, cdCast: 0.25, defAdd: true, fight: 34, rand: Math.random };
 const ORDER_TIE = 1.02;  // the fight model can't tell orders apart closer than this (its error on the tested orders)
 function robustRuns(fn, k = 6, jitter = 0.15) {
   const keep = Object.assign({}, TIMING); let tot = 0, lo = Infinity, hi = 0;
