@@ -659,6 +659,12 @@ function effectiveStats(st, agg, base) {
 /* After you make an upgrade in the game: the status-screen numbers it should now show, worked out with the same
    model as the rankings (the change in every effect from the old state to the new one). Returns only what moved;
    'banner' is the battle-screen total, 'atk' the ATK line. Stats left at 0 (never entered) are skipped. */
+/* Small Candy Strength: the status screen shows 100% + the Training bonuses (max 100 + 60 + 200 + 10 = 370%).
+   Each small candy gives that much outfit EXP, so the candies an outfit needs = its EXP / strength. A number typed
+   in Stats wins; otherwise it comes from your Training levels. */
+function candyTrainBonus(st) { let v = 0; for (const n of D.training) if (n.fx && n.fx.st === 'CostumeExperience') v += fxVal(n.fx, +st.training[n.id] || 0); return v; }
+function candyStrength(st) { return +st.stats.candy > 0 ? st.stats.candy / 100 : 1 + candyTrainBonus(st); }
+const smallCandies = (st, exp) => exp == null ? null : Math.ceil(exp / candyStrength(st));
 function predictStats(stOld, stNew) {
   const b = makeBaseline(stOld);
   const ctx = context(stNew), agg = aggregate(buildEffects(stNew, ctx), ctx, stNew);
@@ -666,6 +672,8 @@ function predictStats(stOld, stNew) {
   const moved = (o, v) => o > 0 && isFinite(v) && Math.abs(v / o - 1) > 1e-9;
   for (const k of Object.keys(STAT_KEYS)) { const o = +stOld.stats[k] || 0, v = S[k] * 100; if (moved(o, v)) out[k] = v; }
   const oa = +stOld.stats.atk || 0; if (moved(oa, oa * S.atk)) out.atk = oa * S.atk;
+  const oc = +stOld.stats.candy || 0, dc = candyTrainBonus(stNew) - candyTrainBonus(stOld);
+  if (oc > 0 && Math.abs(dc) > 1e-12) out.candy = oc + dc * 100;
   const ob = +stOld.stats.banner || 0;
   if (ob > 0) { const r0 = evaluate(stOld, b).bannerShown, r1 = evaluate(stNew, b).bannerShown; if (r0 > 0 && moved(ob, ob * r1 / r0)) out.banner = ob * r1 / r0; }
   return out;
@@ -1132,7 +1140,7 @@ function costumeCandidates(st, base, bt) {
       const ap = x => { x.costumes[c.id].lv = next; }, st2 = withChange(st, ap);
       const tier = c.tiers.find(t => t.lv === next);
       out.push({ apply: ap, cat: 'candy', key: 'cos:' + c.id + ':lv', name: costumeName(c), char: c.char, action: `Lv ${lv} → ${next}`,
-        gain: gainOf(base, bt, st2), cost: { res: 'scandy', n: expCost(c.expGroup, lv, next) },
+        gain: gainOf(base, bt, st2), cost: { res: 'scandy', n: smallCandies(st, expCost(c.expGroup, lv, next)) },
         note: tier ? `unlocks ${SHORT[tier.fx.st] || tier.fx.st} +${fmtNum(fxVal(tier.fx, next) * 100)}%` : (next === 200 ? 'counts toward Lv200 outfit bonuses' : '') });
     }
     if (promo < 5) {
@@ -1143,8 +1151,8 @@ function costumeCandidates(st, base, bt) {
       const st2 = withChange(atCap, x => { x.costumes[c.id].promo = promo + 1; x.costumes[c.id].lv = cap + 20; });
       out.push({ apply: x => { x.costumes[c.id].promo = promo + 1; }, cat: 'candy', key: 'cos:' + c.id + ':promo', name: costumeName(c), char: c.char, action: `Promote ${promo} → ${promo + 1} (cap ${cap} → ${cap + 20})`,
         gain: gainOf(base, atCapT, st2), cost: { res: 'bcos', n: D.costumePromo[promo] },
-        note: (lv < cap ? `reach Lv ${cap} first (${fmtNum(expCost(c.expGroup, lv, cap) || 0)} small candies) · ` : '')
-          + `then ${fmtNum(expCost(c.expGroup, cap, cap + 20) || 0)} small candies to fill the new levels` });
+        note: (lv < cap ? `reach Lv ${cap} first (${fmtNum(smallCandies(st, expCost(c.expGroup, lv, cap)) || 0)} small candies) · ` : '')
+          + `then ${fmtNum(smallCandies(st, expCost(c.expGroup, cap, cap + 20)) || 0)} small candies to fill the new levels` });
     }
   }
   return out;
@@ -1826,7 +1834,7 @@ if (typeof module !== 'undefined') module.exports = {
   fmtNum, parseNum, fmtPct, group, fxVal, lrvRow, expCost, blankState, context, buildEffects, aggregate,
   effectiveStats, evaluate, makeBaseline, candidates, efficiency, bestTeam, bestAssists, bestKeychains, keychainChallengers, bestGear, GEAR, summary,
   boothPlan, boothSettings, slotRate, BOOTH_DISH, STARS, nodeCost, guideLevel, guideMissing, homeLv, sceneOpen, homeName, HOME, COSTUME, ASSIST, FOOD, TREASURE, KEYCHAIN, GUIDE, STAR, STATS, SHORT, RES, charName, assistName, costumeName,
-  condText, assistStar, withChange, predictStats, TIMING, gachaPool, gachaGains, gachaValue, gachaPlan, gachaLevelNeed, gachaMax, GACHA_NAMES, GACHA_DRAWS, clone, teamOf, assistTeamOf, DEFAULT_STACK, stackMode, statValues, bestDisplay,
+  condText, assistStar, withChange, predictStats, candyStrength, candyTrainBonus, TIMING, gachaPool, gachaGains, gachaValue, gachaPlan, gachaLevelNeed, gachaMax, GACHA_NAMES, GACHA_DRAWS, clone, teamOf, assistTeamOf, DEFAULT_STACK, stackMode, statValues, bestDisplay,
 };
 
 </script>
@@ -3050,6 +3058,7 @@ const STAT_FIELDS = [  // same order and names as the in-game Stats window
   ['sr', 'Special Attack & Assist Damage', '%', ''],
   ['ur', 'Special Attack Damage', '%', ''],
   ['boss', 'VS Boss Damage', '%', ''],
+  ['candy', 'Small Candy Strength', '%', 'Used for how many small candies an outfit needs. Filled in from your Training (100% + its bonuses) until you type it'],
 ];
 const STACK_STATS = ['CriticalDamage', 'CriticalRate', 'NormalAttackDamageRate', 'UniqueSkillDamageRate', 'SkillDamageRate', 'BossDamageRate', 'MobDamageRate', 'AssistSkillDamage'];
 function renderSettings() {
@@ -3060,7 +3069,7 @@ function renderSettings() {
       <h2>Your status screen</h2>
       <p class="muted small" style="margin:0">When you press ✓ Done or "I've equipped these", the planner moves these numbers by what it predicts the change did; type the game's number over any that differ. Copy these from the in-game status screen, written the way the game shows them (<span class="num">850</span>, <span class="num">4.2a</span>, <span class="num">264i</span> all work). Open Edit → Stats in the game and copy the numbers. They already include study, training, weapons and every other source, so the planner can tell which stat is furthest behind. On a new account they all read 100%, except Critical Rate (0.1%) and Critical Damage (120%).</p>
       <div>${STAT_FIELDS.map(([k, label, unit, hint]) => `<div class="field"><label for="s-${k}">${label}${unit ? ' (' + unit + ')' : ''}${hint ? `<br><span class="hint">${hint}</span>` : ''}${st.statsAuto && st.statsAuto[k] ? '<br><span class="hint" style="color:var(--pink)">estimated after your upgrades: check it in game</span>' : ''}</label>
-        <input type="text" id="s-${k}" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" value="${esc(fmtNum(+st.stats[k] || 0))}"></div>`).join('')}</div>
+        <input type="text" id="s-${k}" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" value="${esc(fmtNum(k === 'candy' ? candyStrength(st) * 100 : +st.stats[k] || 0))}"></div>`).join('')}</div>
     </section>
     <section class="card stack">
       <h2>Rank upgrades by</h2>
