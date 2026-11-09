@@ -511,7 +511,9 @@ function buildEffects(st, ctx, opts) {
     const c = COSTUME[id], s = st.costumes[id];
     if (!c) continue;
     for (const t of c.tiers) if ((s.lv || 0) >= t.lv) out.push({ st: t.fx.st, v: fxVal(t.fx, s.lv), scope: 'acct', src: 'cos:' + id });
-    if ((s.promo || 0) >= 1) out.push({ st: c.promoFx.st, v: fxVal(c.promoFx, s.promo), scope: 'acct', src: 'cos:' + id });
+    // promotion bonus: its own multiplier for each outfit, not summed with the milestone bonuses. Checked Nov 8:
+    // [Normal] Hachiware promotion 1 → 2 (ATK +25% → +50%) moved the banner +28.7v on ~143.4v = ×1.200 = 1.50 / 1.25.
+    if ((s.promo || 0) >= 1) out.push({ st: c.promoFx.st, v: fxVal(c.promoFx, s.promo), scope: 'acct', src: 'promo' + id + ':' + id });
   }
   // assists owned
   for (const id in st.assists) {
@@ -605,6 +607,7 @@ function aggregate(effects, ctx, st) {
     if (e.cond && !condMet(e.cond, ctx)) continue;
     if (e.kc && !(st.keychains[e.kc] && st.keychains[e.kc].eq)) continue;
     if (e.needA && !ctx.achars.has(e.needA)) continue;
+    if (e.kc && TIMING.kcTeamOnly && !ctx.chars.has(KEYCHAIN[e.kc].char)) continue;  // untested idea: keychains only count for characters on the team
     const cat = e.cat || (e.cat = srcCat(e.src));
     if (e.scope === 'acct') {
       if (e.flat) { flat[e.st] = (flat[e.st] || 0) + e.v; continue; }
