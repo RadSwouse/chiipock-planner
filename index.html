@@ -1471,7 +1471,8 @@ function bestTeam(st, base, locked = {}) {
    1) swap assists one at a time (from your team and from a greedy build-up), each team with the keychain per
       character that suits it best (valued once with its assist on and once off); 2) the best teams get their
       keychains re-checked one by one and every firing order. */
-const TIE = 1.001;  // a change has to beat what you have by 0.1% to be suggested
+const TIE = 1.001;  // inside the search: a step has to beat the last one by 0.1%
+const KEEP = 1.02;  // to suggest changing what you have equipped, it has to win by 2% (the fight model's error on tested orders)
 function bestAssists(st, base) {
   const owned = Object.keys(st.assists).map(Number).filter(id => ASSIST[id] && st.assists[id].lv >= 1);
   if (!owned.length) return { error: 'Mark the assists you own first.' };
@@ -1541,7 +1542,7 @@ function bestAssists(st, base) {
     let order = cand.set.slice(), ot = -1;
     for (const perm of permutations(cand.set)) { scratch.assistTeam = perm; const t = score(); n++; if (t > ot * (1 + 1e-9)) { ot = t; order = perm.slice(); } }
     const mine = cand.set.slice().sort().join() === now.slice().sort().join();
-    if (!best || ot * (mine ? TIE : 1) > best.total * (best.mine ? TIE : 1)) best = { assists: order, keychains: pick, total: ot, mine };
+    if (!best || ot * (mine ? KEEP : 1) > best.total * (best.mine ? KEEP : 1)) best = { assists: order, keychains: pick, total: ot, mine };
   }
   // the keychain changes this team wants ({character: keychain id}, only where it differs from now)
   const kcChange = {}; for (const ch in best.keychains) if (best.keychains[ch] && best.keychains[ch] !== curEq[ch]) kcChange[ch] = best.keychains[ch];
@@ -1565,7 +1566,7 @@ function bestKeychains(st, base) {
       const opts = mine(ch); if (!opts.length) continue;
       // keep what's equipped unless something is really better (ties, e.g. a character outside the team, stay put)
       let best = pick[ch], bestT = -1;
-      if (best) { setEq(); bestT = evaluate(scratch, base).total; }
+      if (best) { setEq(); bestT = evaluate(scratch, base).total * KEEP; }  // keep the equipped one unless another wins by 2%
       for (const k of opts) {
         if (k.id === pick[ch] && bestT >= 0) continue;
         const keep = pick[ch]; pick[ch] = k.id; setEq();
@@ -2355,7 +2356,7 @@ function sectionGear() {
       <div class="items">${row('weapon', best.weapon)}${row('tool', best.tool)}</div>
       <p class="muted small" style="margin:0">A tool's equip bonus is HP, so the tool pick only matters through its star: some Little House display bonuses need a weapon or tool of an exact star.</p>
       ${same ? '<div class="result">You already have the best weapon and tool equipped.</div>'
-        : `<div class="result"><div><b>${fmtPct(gain)}</b> total damage vs what you have equipped now</div>
+        : `<div class="result"><div><b>${fmtPct(gain)}</b> total damage vs what you have equipped now${bannerNote(evaluate(trial, base))}</div>
           <div class="row"><button class="btn primary" id="use-gear">I've equipped these</button></div></div>`}
     </section>`;
   const btn = $('#use-gear');
@@ -2722,7 +2723,7 @@ function sectionAssists() {
         ${kcCh.length ? `<div class="small"><b>With these keychains:</b> ${kcCh.map(([ch, id]) => `${esc(charName(ch))}: ${esc(assistName(KEYCHAIN[id].assist))} ${st.keychains[id].star}★`).join(' · ')}</div>` : ''}
         <p class="muted small" style="margin:0">Boss fights last 35 s and assist skills go off one at a time, in equip order at the start, so a buff in slot 1 is up for the whole fight. A keychain's star bonuses only count while its assist is equipped, so an assist can earn its slot through a keychain.</p>
         ${same ? '<div class="result">You already have the best 6 equipped, in the best order.</div>'
-          : `<div class="result"><div><b>${fmtPct(gain)}</b> fight damage vs what you have equipped now${now.length ? '' : ' (nothing set yet)'}</div>
+          : `<div class="result"><div><b>${fmtPct(gain)}</b> fight damage vs what you have equipped now${now.length ? '' : ' (nothing set yet)'}${bannerNote(trial)}</div>
             ${now.length ? `<div class="small muted">Now: ${now.map(id => esc(ASSIST[id].name)).join(' → ')}</div>` : ''}
             <div class="row"><button class="btn primary" id="use-ast">I've equipped these</button></div></div>`}
       </section>`;
@@ -2735,6 +2736,17 @@ function sectionAssists() {
       changed('quiet'); sectionAssists(); renderEditor(); toast('Assists updated' + statNote(m));
     };
   }, 30);
+}
+
+/* The battle banner also counts Damage to Non-Bosses, which a boss fight doesn't get, so a change can raise the
+   banner and still not help against the boss (or the reverse). Say so when the two disagree by more than 1%. */
+function bannerNote(trial) {
+  const b0 = evaluate(st, base).bannerShown; if (!(b0 > 0)) return '';
+  const db = trial.bannerShown / b0 - 1;
+  const df = evaluate(st, base).total > 0 ? trial.total / evaluate(st, base).total - 1 : 0;
+  if (Math.abs(db - df) < 0.01) return '';
+  const v = +st.stats.banner > 0 ? ` (${db < 0 ? '−' : '+'}${esc(fmtNum(Math.abs(db) * st.stats.banner))})` : '';
+  return `<div class="small muted">Battle banner: <b>${fmtPct(db)}</b>${v}. The banner also counts Damage to Non-Bosses, which a boss fight doesn't get.</div>`;
 }
 
 /* ======================= KEYCHAINS: one per character ======================= */
@@ -2764,7 +2776,7 @@ function sectionKeychains() {
       <h2>Better with a different assist team</h2>
       <p class="small" style="margin:0">Some of your keychains only pay off with their assist equipped. Equip ${addA.map(id => '<b>' + esc(ASSIST[id].name) + '</b>').join(', ')} as ${addA.length === 1 ? 'an assist' : 'assists'}${dropA.length ? ` (instead of ${dropA.map(id => esc(ASSIST[id].name)).join(', ')})` : ''}, with these keychains:</p>
       <div class="small">${jKcDiff.map(c => `${esc(charName(c))}: <b>${esc(assistName(KEYCHAIN[jPick[c]].assist))} ${st.keychains[jPick[c]].star}★</b> Lv ${st.keychains[jPick[c]].lv || 1}`).join(' · ')}</div>
-      <div class="result"><div><b>${fmtPct(jGain)}</b> fight damage vs now · assists in order: ${J.assists.map(id => esc(ASSIST[id].name)).join(' → ')}</div>
+      <div class="result"><div><b>${fmtPct(jGain)}</b> fight damage vs now · assists in order: ${J.assists.map(id => esc(ASSIST[id].name)).join(' → ')}</div>${bannerNote(evaluate(withChange(st, x => { x.assistTeam = J.assists.slice(); for (const id in x.keychains) x.keychains[id].eq = jPick[KEYCHAIN[id].char] == id; }), base))}
         <div class="row"><button class="btn primary" id="use-joint">I've done both</button></div></div>
     </section>` : ''}<section class="card stack">
       <div class="row" style="justify-content:space-between"><h2>Keychains to equip</h2><span class="muted small">${showJ ? 'with your current assists' : 'one per character'}</span></div>
@@ -2775,7 +2787,7 @@ function sectionKeychains() {
             ${(ch[c] || []).slice(0, 3).map(x => `<br><span class="small" style="color:var(--sun)">${esc(assistName(KEYCHAIN[x.id].assist))} ${st.keychains[x.id].star}★ (Lv ${x.lv}) passes it at Lv ${x.at}${x.beads != null ? ` · ${fmtNum(x.beads)} beads` : ''}${KEYCHAIN[x.id].tierStar[0] <= st.keychains[x.id].star && !x.assistOn ? ` · more if ${esc(assistName(KEYCHAIN[x.id].assist))} is equipped` : ''}</span>`).join('')}</div></div>`; }).join('')}</div>
       <p class="muted small" style="margin:0">Only equipped keychains count. The equip bonus is that character's ATK and grows with level; the star bonuses only count while the keychain's assist is equipped, so a keychain for an assist you use is worth more. Orange lines are keychains that would beat the current pick once levelled to that level (the beads assume they start from 0 EXP into their level).</p>
       ${same ? '<div class="result">You already have the best keychains equipped.</div>'
-        : `<div class="result"><div><b>${fmtPct(gain)}</b> total damage vs what you have equipped now</div>
+        : `<div class="result"><div><b>${fmtPct(gain)}</b> total damage vs what you have equipped now${bannerNote(evaluate(trial, base))}</div>
           <div class="row"><button class="btn primary" id="use-kc">I've equipped these</button></div></div>`}
     </section>`;
   const btn = $('#use-kc');
