@@ -1538,6 +1538,8 @@ function bestAssists(st, base) {
       for (const id of kcs[ch]) { if (id === pick[ch]) continue; setEq(Object.assign({}, pick, { [ch]: id })); const t = score(); if (t > bt * (1 + 1e-9)) { bt = t; b = id; } }
       pick[ch] = b;
     }
+    Object.assign(pick, kcPairs(kcs, Object.assign({}, pick), setEq, score,
+      { st, assistsOn: new Set(cand.set), teamChars: context(st).chars, keepOf: p => Object.keys(p).some(ch => p[ch] && p[ch] !== curEq[ch]) ? 1 : TIE }));
     setEq(pick);
     let order = cand.set.slice(), ot = -1;
     for (const perm of permutations(cand.set)) { scratch.assistTeam = perm; const t = score(); n++; if (t > ot * (1 + 1e-9)) { ot = t; order = perm.slice(); } }
@@ -1551,6 +1553,41 @@ function bestAssists(st, base) {
 function* permutations(arr) {
   if (arr.length <= 1) { yield arr.slice(); return; }
   for (let i = 0; i < arr.length; i++) { const rest = arr.slice(0, i).concat(arr.slice(i + 1)); for (const p of permutations(rest)) yield [arr[i]].concat(p); }
+}
+/* Pairwise keychain moves. Only one keychain per assist gives its star bonuses (the highest star, then level), so
+   the best set-up can need two characters to change at once: e.g. Shisa moves to a new Sphinx 4★ and Chiikawa takes
+   over the Nagareboshi lead. Changing one character at a time never finds that (each half alone loses the star
+   bonuses), so this tries every pair of team characters over their sensible keychains: the ones whose assist is on
+   the team, plus each character's two highest-star/level ones for their equip ATK. */
+function kcPairs(kcs, pick, setEq, score, opts) {
+  const { assistsOn, teamChars, keepOf } = opts;
+  const rank = id => { const s = opts.st.keychains[id]; return s.star * 1000 + (s.lv || 1); };
+  const cand = {};
+  for (const ch in kcs) {
+    if (!teamChars.has(+ch)) continue;
+    const ids = kcs[ch].map(x => +x);
+    const set = new Set(ids.filter(id => assistsOn.has(KEYCHAIN[id].assist)));
+    ids.slice().sort((a, b) => rank(b) - rank(a)).slice(0, 2).forEach(id => set.add(id));
+    if (pick[ch]) set.add(+pick[ch]);
+    if (set.size) cand[ch] = [...set];
+  }
+  const chars = Object.keys(cand);
+  const val = p => { setEq(p); return score() * (keepOf ? keepOf(p) : 1); };
+  let cur = val(pick);
+  for (let sweep = 0; sweep < 4; sweep++) {
+    let best = null;
+    for (let i = 0; i < chars.length; i++) for (let j = i + 1; j < chars.length; j++) {
+      const a = chars[i], b = chars[j];
+      for (const x of cand[a]) for (const y of cand[b]) {
+        if (x == pick[a] || y == pick[b]) continue;  // single moves are the passes' job
+        const p = Object.assign({}, pick, { [a]: x, [b]: y }), t = val(p);
+        if (t > cur * TIE && (!best || t > best.t)) best = { p, t };
+      }
+    }
+    if (!best) break;
+    pick = best.p; cur = best.t;
+  }
+  return pick;
 }
 function bestKeychains(st, base) {
   // one keychain per character, scored on the banner: its equip ATK for that character plus its star bonuses
@@ -1577,6 +1614,15 @@ function bestKeychains(st, base) {
       pick[ch] = best;
     }
   }
+  // then pairs of characters together (moving an assist's lead from one character to another)
+  const allEff = buildEffects(st, context(st), { allKc: true });
+  const curEq = {}; for (let ch = 1; ch <= 7; ch++) { const on = mine(ch).find(k => st.keychains[k.id].eq); if (on) curEq[ch] = on.id; }
+  const kcs = {}; for (let ch = 1; ch <= 7; ch++) { const m = mine(ch); if (m.length) kcs[ch] = m.map(k => k.id); }
+  const nChanged = p => Object.keys(p).filter(ch => p[ch] && p[ch] !== curEq[ch]).length;
+  const paired = kcPairs(kcs, Object.assign({}, pick), p => { for (const id in scratch.keychains) scratch.keychains[id].eq = p[KEYCHAIN[id].char] == id; },
+    () => evaluate(scratch, base, null, allEff).total,
+    { st, assistsOn: new Set(assistTeamOf(st)), teamChars: context(st).chars, keepOf: p => nChanged(p) ? 1 : KEEP });
+  Object.assign(pick, paired);
   const eq = {}; for (const ch in pick) if (pick[ch]) eq[pick[ch]] = true;
   return eq;
 }
@@ -2290,7 +2336,7 @@ function sectionGacha() {
     const costText = { wt: '1 pull = 35 draws for 1,500 gems', as: '1 pull = 35 draws for 1,500 gems', kc: '5 draws for 1,500 gems (300 each)' };
     const rows = `<ol class="rank">${order.map((k, i) => `<li class="up${i === 0 ? ' top' : ''}">
         <span class="pos">${i + 1}</span>
-        <div class="what"><div class="name">${GACHA_NAMES[k]}${k === 'kc' ? '' : ` <span class="pill">Lv ${G[k].lv}</span>`}</div><div class="act">${costText[k]}</div></div>
+        <div class="what"><div class="name">${GACHA_NAMES[k]}${k === 'kc' ? '' : ` <span class="pill">Lv ${G[k].lv}</span>`}</div><div class="act">${costText[k]}</div>${k === 'kc' ? '' : `<div class="act muted">${gachaLvLine(k)}</div>`}</div>
         <div class="gain" title="Expected change in total damage per 1,500 gems">${fmtPct(per(k))}</div>
         <div class="bar" aria-hidden="true"><b style="width:${Math.max(2, Math.min(100, 100 * per(k) / (per(order[0]) || 1)))}%"></b></div>
         <div class="meta" style="flex-direction:column;align-items:flex-start;gap:2px"><span>per 1,500 gems${bannerText(per(k)) ? ' · ' + bannerText(per(k)) : ''}</span>
@@ -2308,19 +2354,39 @@ function sectionGacha() {
       const L = G[k].lv, max = gachaMax(k);
       if (L >= max) return `<div class="item"><div class="nm">${GACHA_NAMES[k]}</div><div class="small">Lv ${L} (max)</div></div>`;
       const left = gachaLevelNeed(L) - G[k].prog, nxt = gachaValue(k, L + 1, gains).perDraw * 35;
+      const ms = gachaMilestones(k).map(m => `<br><span class="muted">First ${m.star}★ drops at Lv ${m.lv}: ${gnum(m.draws)} draws, ${gachaTime(m.draws)} of free pulls, or ${gnum(Math.ceil(m.draws / 35) * 1500)} gems</span>`).join('');
       return `<div class="item"><div class="nm">${GACHA_NAMES[k]} <span class="muted">Lv ${L} → ${L + 1}</span><br>
-          <span class="muted">${gnum(left)} draws to go: ${Math.ceil(left / 105)} days of free pulls, or ${gnum(Math.ceil(left / 35) * 1500)} gems</span></div>
+          <span class="muted">${gnum(G[k].prog)} / ${gnum(gachaLevelNeed(L))} (${Math.floor(100 * G[k].prog / gachaLevelNeed(L))}%) · ${gnum(left)} draws to go: ${gachaTime(left)} of free pulls, or ${gnum(Math.ceil(left / 35) * 1500)} gems</span>${ms}</div>
         <div class="small" style="text-align:right">a pull at Lv ${L + 1}: <b>${fmtPct(nxt)}</b><br><span class="muted">now ${fmtPct(per(k))}</span></div></div>`;
     }).join('');
     $('#feature').innerHTML = `<section class="card stack"><div class="row" style="justify-content:space-between"><h2>Where gems do the most</h2><span class="muted small">expected damage</span></div>
         ${rows}
-        ${order[0] === 'kc' ? '<p class="small" style="margin:0;color:var(--pink)">Keychain pulls are scored on star-ups of your equipped keychains. The 4★ star bonus hasn\'t been checked against the game yet, so treat its size with care.</p>' : ''}
+        ${order[0] === 'kc' ? '<p class="small" style="margin:0;color:var(--pink)">Keychain pulls are scored as progress toward star-ups of your equipped keychains: each copy counts for its share of the merge it feeds. The damage only arrives when a merge completes, so it comes in big jumps, not a little per pull. The 5★ star bonuses haven\'t been checked against the game yet.</p>' : ''}
         <p class="muted small" style="margin:0">Only prizes that add damage as things stand are counted: a keychain you don\'t have equipped, or a new assist that would need a team slot, counts as nothing.</p></section>
       ${planHtml}
       <section class="card stack"><h2>Gacha levels</h2><div class="items">${lvCard}</div>
         <p class="muted small" style="margin:0">Free pulls: 3 a day on each (105 draws). Levels past 15 are assumed to take 20,000 draws each until checked.</p></section>`;
   }, 30);
 }
+/* Gacha level progress: one line for the ranking ("Lv 8 · 6,550 / 10,000 · 148,500 gems to Lv 9"), the draws to
+   the first level where a new rarity can drop, and how long free pulls (3 × 35 a day) take to get there. */
+function gachaLvLine(k) {
+  const G = st.gacha[k], L = G.lv;
+  if (L >= gachaMax(k)) return `Lv ${L} (max)`;
+  const need = gachaLevelNeed(L), left = need - G.prog;
+  return `Progress ${gnum(G.prog)} / ${gnum(need)} · ${gnum(Math.ceil(left / 35) * 1500)} gems (or ${gachaTime(left)} of free pulls) to Lv ${L + 1}`;
+}
+function gachaMilestones(k) {
+  const G = st.gacha[k], out = [], max = gachaMax(k);
+  for (const star of [7, 8]) {
+    let lv = G.lv + 1; while (lv <= max && !(gachaRarity(lv)[star - 1] > 0)) lv++;
+    if (lv > max || gachaRarity(G.lv)[star - 1] > 0) continue;
+    let draws = gachaLevelNeed(G.lv) - G.prog; for (let l = G.lv + 1; l < lv; l++) draws += gachaLevelNeed(l);
+    out.push({ star, lv, draws });
+  }
+  return out;
+}
+function gachaTime(draws) { const d = Math.ceil(draws / 105); return d < 60 ? `${d} day${d === 1 ? '' : 's'}` : d < 730 ? `${Math.round(d / 30.4)} months` : `${(d / 365).toFixed(1)} years`; }
 // the game shows weapon/tool % like 446.8% under 1,000 and 7.42a% above (cut off, not rounded)
 const gearPct = x => x < 1000 ? String(Math.floor(x * 10 + 1e-6) / 10) + '%' : fmtTrunc(x) + '%';
 function editGear() {
