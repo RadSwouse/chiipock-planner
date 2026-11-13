@@ -630,7 +630,8 @@ function aggregate(effects, ctx, st) {
     if (e.needA && TIMING.kcOnePer && leads[e.needA] !== e.kc) continue;  // one keychain's star bonuses per assist (see kcLeads)
     // TIMING.kcChars (Trading Post): judge star bonuses by the old team's characters, so a character swap's keychain
     // effect can be shown apart; equip bonuses always follow who is on the team
-    if (e.kc && TIMING.kcTeamOnly && !((e.needA && TIMING.kcChars) || ctx.chars).has(KEYCHAIN[e.kc].char)) continue;  // keychains only count for characters on the team (checked Nov 8)
+    if (e.kc && TIMING.kcTeamOnly && !((e.needA && TIMING.kcChars) || ctx.chars).has(KEYCHAIN[e.kc].char)) continue;
+    if (e.kc && !e.needA && TIMING.kcNoEquip && TIMING.kcNoEquip.has(KEYCHAIN[e.kc].char)) continue;  // Trading Post: outfit-only comparison  // keychains only count for characters on the team (checked Nov 8)
     const cat = e.cat || (e.cat = srcCat(e.src));
     if (e.scope === 'acct') {
       if (e.flat) { flat[e.st] = (flat[e.st] || 0) + e.v; continue; }
@@ -1761,14 +1762,18 @@ function tradingPost(st, base, sets) {
     const own = withChange(st, x => { x.costumes[c.id] = { lv: 200, promo: 5 }; });
     const own100 = withChange(st, x => { x.costumes[c.id] = { lv: 100, promo: 0 }; });
     const tPass = evaluate(own, base).total;
-    // best place on the team, with keychains counted as if the same characters were still on it
+    // best place on the team, judged on the outfits alone: for a different character coming in, neither its keychain
+    // nor the leaving character's counts (equip bonuses dropped for both, star bonuses kept as the old team had them)
+    const withKc = (chars, noEq, fn) => { TIMING.kcChars = chars; TIMING.kcNoEquip = noEq; try { return fn(); } finally { TIMING.kcChars = null; TIMING.kcNoEquip = null; } };
     let best = { t: tPass, out: null };
     for (let i = 0; i < team.length; i++) {
       if (team.some(id => COSTUME[id].char === c.char) && COSTUME[team[i]].char !== c.char) continue;
       const nt = team.slice(); nt[i] = c.id;
       const s2 = withChange(own, x => { x.team = nt; });
-      TIMING.kcChars = oldChars; let tN; try { tN = evaluate(s2, base).total; } finally { TIMING.kcChars = null; }
-      if (tN > best.t) best = { t: tN, out: team[i], s: s2 };
+      const outCh = COSTUME[team[i]].char;
+      const t = outCh === c.char ? evaluate(s2, base).total
+        : withKc(oldChars, new Set([outCh, c.char]), () => tPass * evaluate(s2, base).total / evaluate(own, base).total);
+      if (t > best.t) best = { t, out: team[i], s: s2 };
     }
     const row = { id: c.id, name: costumeName(c), char: c.char, cook: c.cook,
       gain100: evaluate(own100, base).total / t0 - 1, gainMax: tPass / t0 - 1, gainTeam: best.t / t0 - 1, replaces: best.out };
@@ -1779,8 +1784,8 @@ function tradingPost(st, base, sets) {
       const sR = withChange(best.s, x => { for (const k in x.keychains) x.keychains[k].eq = !!eq[k]; });
       const out = eqOf(COSTUME[best.out].char), inn = eqOf(c.char);
       const outCh = COSTUME[best.out].char, lossChars = new Set([...oldChars].filter(ch => ch !== outCh));
-      TIMING.kcChars = lossChars; let tL; try { tL = evaluate(best.s, base).total; } finally { TIMING.kcChars = null; }
-      row.kc = { now: tA / best.t - 1, loss: tL / best.t - 1, reequip: evaluate(sR, base).total / best.t - 1,
+      const tL = withKc(lossChars, null, () => evaluate(best.s, base).total), tO = withKc(oldChars, null, () => evaluate(best.s, base).total);
+      row.kc = { now: tA / best.t - 1, loss: tL / tO - 1, reequip: evaluate(sR, base).total / best.t - 1,
         lost: out ? kcName(out) : null, gained: inn ? kcName(inn) : null, outChar: COSTUME[best.out].char };
     }
     const inc1 = cookIncome(own);
