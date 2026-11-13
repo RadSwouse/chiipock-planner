@@ -609,7 +609,11 @@ const TRAIN_NODE = {}; for (const n of D.training) TRAIN_NODE[n.id] = n;
 function kcLeads(st) {
   const lead = {}, rank = {};
   for (const id in st.keychains) {
-    const s = st.keychains[id], k = KEYCHAIN[id]; if (!s.eq || !k || !(s.star >= 1)) continue;
+    // kcLeadOwned: the lead is your best keychain of that assist whether or not it's equipped; if it isn't equipped,
+    // nobody gets the star bonuses. Checked Nov 12: with Shisa's Nagareboshi 4★ Lv100 taken off, Chiikawa's
+    // Nagareboshi 4★ Lv1 (the only one equipped) added nothing: putting Chiikawa back on Muchauman gained +250v,
+    // as if she'd had no Nagareboshi bonuses at all (a take-over would have made it about +84v).
+    const s = st.keychains[id], k = KEYCHAIN[id]; if (!k || !(s.star >= 1) || !(s.eq || TIMING.kcLeadOwned)) continue;
     const r = s.star * 1000 + (s.lv || 1);
     if (!(rank[k.assist] >= r)) { rank[k.assist] = r; lead[k.assist] = id; }
   }
@@ -728,7 +732,7 @@ const OUTFIT_GAP = 1;
    damage that counts is about the first 34 s. Small timing wobble in the game makes an order whose hits land right at
    a buff's edge (or right at the end of the fight) swing between fights, so orders are scored on the average of a few
    wobbled fights (robustRuns). Fit error across those orders: about 2%, so orders within 2% are treated as a tie. */
-var TIMING = { kcGate: true, kcOnePer: true, kcTeamOnly: true, ogap: 1.1, dmgDelay: 0, buffDelay: 0, jitter: 0, cdCast: 0.25, defAdd: true, fight: 34, rand: Math.random };
+var TIMING = { kcGate: true, kcOnePer: true, kcLeadOwned: true, kcTeamOnly: true, ogap: 1.1, dmgDelay: 0, buffDelay: 0, jitter: 0, cdCast: 0.25, defAdd: true, fight: 34, rand: Math.random };
 const ORDER_TIE = 1.02;  // the fight model can't tell orders apart closer than this (its error on the tested orders)
 function robustRuns(fn, k = 6, jitter = 0.15) {
   const keep = Object.assign({}, TIMING); let tot = 0, lo = Infinity, hi = 0;
