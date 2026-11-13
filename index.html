@@ -1811,7 +1811,11 @@ const STARS = { 1: 4, 2: 5, 3: 6 };  // costume rarity id → in-game stars
 const boothName = b => `${charName(b.char)}'s ${BOOTH_DISH[b.genre]}`;
 function boothSettings(st, b) {
   const s = (st.booths || {})[b.id] || {};
-  return { on: s.on !== false, lv: Math.max(1, +s.lv || 1), slots: Math.max(0, Math.min(4, s.slots == null ? 2 : +s.slots)) };
+  return { on: s.on !== false, lv: Math.max(1, +s.lv || 1), slots: sousSlots(st) };
+}
+// Sous-chef slots open with Fest Rank, the same for every booth: one each at rank 25, 50, 75 and 100 (game8 rank rewards)
+function sousSlots(st) {
+  return Math.max(0, Math.min(4, Math.floor(((st.fest && +st.fest.rank) || 0) / 25)));
 }
 function slotRate(b, set, costume, isChef) {
   const c = D.boothCfg;
@@ -3212,8 +3216,7 @@ function renderBooths() {
     const b = e.b, set = e.set;
     const settings = `<div class="ctl" style="justify-content:flex-start">
         <label for="bo-on-${b.id}"><input type="checkbox" id="bo-on-${b.id}"${set.on ? ' checked' : ''}>Open</label>
-        ${numInput('bo-lv-' + b.id, set.lv, 1, 999, 'Booth Lv')}
-        <label for="bo-sl-${b.id}">Sous-chef slots<select id="bo-sl-${b.id}">${[0, 1, 2, 3, 4].map(n => `<option${n === set.slots ? ' selected' : ''}>${n}</option>`).join('')}</select></label></div>`;
+        ${numInput('bo-lv-' + b.id, set.lv, 1, 999, 'Booth Lv')}</div>`;
     if (!set.on) return `<article class="hb-card" style="opacity:.75"><div class="hb-top"><span class="hb-name">${esc(e.name)}</span><span class="hb-lv">closed</span></div>${settings}</article>`;
     const sous = []; for (let i = 0; i < set.slots; i++) sous.push(row(e.sous[i], 'Sous-chef'));
     return `<article class="hb-card">
@@ -3231,7 +3234,7 @@ function renderBooths() {
       <div class="muted small">${fmtNum(plan.perMin * mult * 60)} Cooking Coins per hour from ${owned} owned outfit${owned === 1 ? '' : 's'}. Each booth's chef has to be that booth's character; sous-chefs can be anyone. Every outfit cooks at one booth at a time, and cooking doesn't affect your battle team.</div>
       <div class="ctl" style="justify-content:flex-start">${numInput('fest-rank', st.fest.rank, 0, 999, 'Fest Rank')}
         <label for="fest-boost"><input type="checkbox" id="fest-boost"${st.fest.boost ? ' checked' : ''}>×2 boost active</label></div>
-      <div class="muted small">Fest Rank and the boost raise every booth equally, so they change the totals but never who cooks where.</div>
+      <div class="muted small">Fest Rank and the boost raise every booth equally. Fest Rank also opens sous-chef slots at every booth: one each at rank 25, 50, 75 and 100. You have ${sousSlots(st)}${sousSlots(st) < 4 ? `; the next opens at rank ${(sousSlots(st) + 1) * 25}` : ''}.</div>
     </section>
     <div class="stack" style="gap:8px">${cards}</div>
     <p class="muted small" style="margin:0">Outfits are taken from the Outfits tab (any outfit at Lv 1 or above counts as owned). Each slot earns 10 × (1 + booth Lv) × its rate, where the rate is ★4 0.3, ★5 1 or ★6 3, plus 1.5 when the outfit's specialty matches the booth. Sous-chefs earn 30% of that, and Fest Rank adds 1% per rank. Rates are cut to 3 digits the way the game shows them.</p>`;
@@ -3282,11 +3285,10 @@ function renderCandyPlan() {
 function onBoothEdit(e) {
   const el = e.target, id = el.id; let m;
   st.booths = st.booths || {};
-  if ((m = id.match(/^bo-(on|lv|sl)-(\d+)$/))) {
+  if ((m = id.match(/^bo-(on|lv)-(\d+)$/))) {
     const b = st.booths[m[2]] = Object.assign({}, st.booths[m[2]]);
     if (m[1] === 'on') b.on = el.checked;
     else if (m[1] === 'lv') b.lv = clampInt(el.value, 1, 999);
-    else b.slots = clampInt(el.value, 0, 4);
   } else if (id === 'fest-rank') st.fest.rank = clampInt(el.value, 0, 999);
   else if (id === 'fest-boost') st.fest.boost = el.checked;
   scheduleSave(); renderBooths();
