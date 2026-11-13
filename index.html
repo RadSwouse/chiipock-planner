@@ -628,7 +628,9 @@ function aggregate(effects, ctx, st) {
     if (e.kc && !(st.keychains[e.kc] && st.keychains[e.kc].eq)) continue;
     if (e.needA && TIMING.kcGate && !ctx.achars.has(e.needA)) continue;  // star bonuses only while the assist is equipped
     if (e.needA && TIMING.kcOnePer && leads[e.needA] !== e.kc) continue;  // one keychain's star bonuses per assist (see kcLeads)
-    if (e.kc && TIMING.kcTeamOnly && !ctx.chars.has(KEYCHAIN[e.kc].char)) continue;  // keychains only count for characters on the team (checked Nov 8)
+    // TIMING.kcChars (Trading Post): judge star bonuses by the old team's characters, so a character swap's keychain
+    // effect can be shown apart; equip bonuses always follow who is on the team
+    if (e.kc && TIMING.kcTeamOnly && !((e.needA && TIMING.kcChars) || ctx.chars).has(KEYCHAIN[e.kc].char)) continue;  // keychains only count for characters on the team (checked Nov 8)
     const cat = e.cat || (e.cat = srcCat(e.src));
     if (e.scope === 'acct') {
       if (e.flat) { flat[e.st] = (flat[e.st] || 0) + e.v; continue; }
@@ -1717,6 +1719,87 @@ function bestDisplay(st, base) {
 }
 
 
+/* ======================= Trading Post (outfit tickets) =======================
+   Each outfit you don't own yet, scored by the damage it adds once maxed (Lv200, promotion 5): its level bonuses and
+   promotion apply to the whole account wherever it sits, plus what it adds if it earns a place on the team. Its booth
+   cooking adds coins; those are valued as the food levels they'd buy. Keychain changes from a character swap are
+   shown on their own and left out of the score. */
+const SHOP_DAYS = 30, SHOP_MIN_PER_DAY = 720;  // coins collected over 30 days, assuming 12 hours' worth a day
+// Damage from spending extra cooking coins on food levels, cheapest-per-damage first, from where you are now.
+// Returns points [coins spent, total] so many budgets can be read off one pass.
+function foodCoinCurve(st, base, budget) {
+  const s = clone(st); let t = evaluate(s, base).total; const pts = [[0, t]];
+  const next = {};
+  const calc = id => {
+    const f = FOOD[id], x = s.foods[id]; if (!f || !x || !(x.lv >= 1)) return null;
+    const cap = Math.min(x.cap || 100, 300); if (x.lv >= cap) return null;
+    const cost = expCost(f.expGroup, x.lv, x.lv + 1); if (!(cost > 0)) return null;
+    x.lv++; const t2 = evaluate(s, base).total; x.lv--;
+    return { cost, r: Math.log(t2 / t) / cost };
+  };
+  for (const id in s.foods) next[id] = calc(id);
+  let spent = 0;
+  for (let it = 0; it < 3000 && spent < budget; it++) {
+    let best = null; for (const id in next) if (next[id] && (!best || next[id].r > next[best].r)) best = id;
+    if (!best || spent + next[best].cost > budget) break;
+    spent += next[best].cost; s.foods[best].lv++; t = evaluate(s, base).total; pts.push([spent, t]);
+    next[best] = calc(best);
+  }
+  return pts;
+}
+const curveAt = (pts, c) => { let t = pts[0][1]; for (const [x, y] of pts) { if (x > c) break; t = y; } return t; };
+function shopSets(st) { const s = st.shop && Array.isArray(st.shop.sets) ? st.shop.sets : [6, 8]; return s.map(Number); }
+function tradingPost(st, base, sets) {
+  sets = sets || shopSets(st);
+  const t0 = evaluate(st, base).total, inc0 = cookIncome(st);
+  const team = teamOf(st), oldChars = new Set(team.map(id => COSTUME[id].char));
+  const kcName = id => `${charName(KEYCHAIN[id].char)} × ${assistName(KEYCHAIN[id].assist)} ${st.keychains[id].star}★ Lv${st.keychains[id].lv || 1}`;
+  const eqOf = ch => Object.keys(st.keychains).find(id => st.keychains[id].eq && KEYCHAIN[id] && KEYCHAIN[id].char === ch);
+  const rows = [];
+  for (const c of D.costumes) {
+    if (!sets.includes(c.set) || st.costumes[c.id]) continue;
+    const own = withChange(st, x => { x.costumes[c.id] = { lv: 200, promo: 5 }; });
+    const own100 = withChange(st, x => { x.costumes[c.id] = { lv: 100, promo: 0 }; });
+    const tPass = evaluate(own, base).total;
+    // best place on the team, with keychains counted as if the same characters were still on it
+    let best = { t: tPass, out: null };
+    for (let i = 0; i < team.length; i++) {
+      if (team.some(id => COSTUME[id].char === c.char) && COSTUME[team[i]].char !== c.char) continue;
+      const nt = team.slice(); nt[i] = c.id;
+      const s2 = withChange(own, x => { x.team = nt; });
+      TIMING.kcChars = oldChars; let tN; try { tN = evaluate(s2, base).total; } finally { TIMING.kcChars = null; }
+      if (tN > best.t) best = { t: tN, out: team[i], s: s2 };
+    }
+    const row = { id: c.id, name: costumeName(c), char: c.char, cook: c.cook,
+      gain100: evaluate(own100, base).total / t0 - 1, gainMax: tPass / t0 - 1, gainTeam: best.t / t0 - 1, replaces: best.out };
+    // keychains: only when a different character comes in
+    if (best.out && COSTUME[best.out].char !== c.char) {
+      const tA = evaluate(best.s, base).total;
+      const eq = bestKeychains(best.s, base);
+      const sR = withChange(best.s, x => { for (const k in x.keychains) x.keychains[k].eq = !!eq[k]; });
+      const out = eqOf(COSTUME[best.out].char), inn = eqOf(c.char);
+      const outCh = COSTUME[best.out].char, lossChars = new Set([...oldChars].filter(ch => ch !== outCh));
+      TIMING.kcChars = lossChars; let tL; try { tL = evaluate(best.s, base).total; } finally { TIMING.kcChars = null; }
+      row.kc = { now: tA / best.t - 1, loss: tL / best.t - 1, reequip: evaluate(sR, base).total / best.t - 1,
+        lost: out ? kcName(out) : null, gained: inn ? kcName(inn) : null, outChar: COSTUME[best.out].char };
+    }
+    const inc1 = cookIncome(own);
+    row.coinsPerMin = inc1 - inc0; row.coinsPct = inc0 > 0 ? inc1 / inc0 - 1 : 0;
+    row.coins = Math.max(0, row.coinsPerMin) * SHOP_MIN_PER_DAY * SHOP_DAYS;
+    rows.push(row);
+  }
+  const curve = foodCoinCurve(st, base, Math.max(0, ...rows.map(r => r.coins)));
+  const c0 = curve[0][1];
+  for (const r of rows) {
+    r.coinGain = curveAt(curve, r.coins) / c0 - 1;
+    r.score = (1 + r.gainTeam) * (1 + r.coinGain) - 1;
+  }
+  rows.sort((a, b) => b.score - a.score);
+  // how long today's booths take to fill every food to its current cap (after that, coins wait on cap raises)
+  let fill = 0; for (const id in st.foods) { const f = FOOD[id], x = st.foods[id]; if (f && x.lv >= 1) fill += expCost(f.expGroup, x.lv, Math.min(x.cap || 100, 300)) || 0; }
+  return { rows, inc0, fillDays: inc0 > 0 ? fill / (inc0 * SHOP_MIN_PER_DAY) : Infinity, team };
+}
+
 /* ======================= Om Nom Fest booths ======================= */
 const BOOTH_DISH = { 11: 'Rice', 12: 'Bread', 13: 'Noodles', 14: 'Side Dishes', 15: 'Desserts', 16: 'Drinks' };
 const STARS = { 1: 4, 2: 5, 3: 6 };  // costume rarity id → in-game stars
@@ -1912,7 +1995,7 @@ function summary(st, base) {
 
 if (typeof module !== 'undefined') module.exports = {
   fmtNum, parseNum, fmtPct, group, fxVal, lrvRow, expCost, blankState, context, buildEffects, aggregate,
-  effectiveStats, evaluate, makeBaseline, candidates, efficiency, bestTeam, bestAssists, bestKeychains, keychainChallengers, bestGear, GEAR, summary,
+  effectiveStats, evaluate, makeBaseline, tradingPost, shopSets, candidates, efficiency, bestTeam, bestAssists, bestKeychains, keychainChallengers, bestGear, GEAR, summary,
   boothPlan, boothSettings, slotRate, BOOTH_DISH, STARS, nodeCost, guideLevel, guideMissing, homeLv, sceneOpen, homeName, HOME, COSTUME, ASSIST, FOOD, TREASURE, KEYCHAIN, GUIDE, STAR, STATS, SHORT, RES, charName, assistName, costumeName,
   condText, assistStar, withChange, predictStats, candyStrength, candyTrainBonus, TIMING, gachaPool, gachaGains, gachaValue, gachaPlan, gachaLevelNeed, gachaMax, GACHA_NAMES, GACHA_DRAWS, clone, teamOf, assistTeamOf, DEFAULT_STACK, stackMode, statValues, bestDisplay,
 };
@@ -2030,8 +2113,8 @@ function renderBanner() {
 
 /* ---------------- navigation: one chip per category, plus Stats ---------------- */
 const NAV = [['candy', 'Outfits'], ['assist', 'Assist'], ['gear', 'Weapons & Tools'], ['train', 'Training'], ['house', 'Little House'], ['kc', 'Keychains'],
-  ['food', 'Food'], ['study', 'Study'], ['home', 'Home'], ['guide', 'Handbook'], ['gacha', 'Gacha'], ['set', 'Stats']];  // the game's own order
-const TAB_TOKENS = { gacha: 'gacha', gear: 'gear', home: 'home items', food: 'food', candy: 'outfits', train: 'training', study: 'study', assist: 'assists', kc: 'keychains', house: 'house', guide: 'handbook', home: 'home', train: 'training', study: 'study', set: 'stats' };
+  ['food', 'Food'], ['study', 'Study'], ['home', 'Home'], ['guide', 'Handbook'], ['gacha', 'Gacha'], ['shop', 'Trading Post'], ['set', 'Stats']];  // the game's own order
+const TAB_TOKENS = { shop: 'trading post', gacha: 'gacha', gear: 'gear', home: 'home items', food: 'food', candy: 'outfits', train: 'training', study: 'study', assist: 'assists', kc: 'keychains', house: 'house', guide: 'handbook', home: 'home', train: 'training', study: 'study', set: 'stats' };
 function current() { return ui.tab === 'set' ? 'set' : ui.cat; }
 function renderNav() {
   const n = $('#nav');
@@ -2076,6 +2159,7 @@ const CAT_INTRO = {
   assist: 'Assists only level up from duplicate pulls, so this picks the 6 to equip, the order to equip them in (that\'s the order they fire at the start of a fight) and the keychains that go with them. Buff and debuff assists are scored by how much they raise everyone else\'s damage while they\'re up, including the outfits\' special attacks.',
   kc: 'Each character equips one keychain (7 in total), and only equipped keychains do anything: the equip bonus is that character\'s ATK (so it counts while the character is in your team), and the star bonuses count while the keychain\'s assist is equipped. Beads: 1 bead = 100 EXP, and leftover EXP carries into the next level.',
   gear: 'Weapons and tools only level up from gacha copies (Lv 1–100). Every one you own gives its bonus effect, and the one weapon and one tool you equip also give their equip bonus (a tool\'s is HP). Enter what you own and its level; Handbook weapon & tool sets are then worked out for you.',
+  shop: 'Which outfit to trade 10 outfit tickets for. Every outfit you don\'t own yet from the sets in the shop is scored by the damage it adds once maxed (Lv 200, promotion 5): its level bonuses and promotion count for the whole account wherever it sits, plus anything it adds by joining the team. The extra cooking coins it makes in your booths count as the food levels they buy.',
   gacha: 'Where your gems add the most damage. Each pull is scored by every prize it can give: its chance per draw times what one more copy adds (a new item, a share of its next level, or a keychain merge). Weapons & Tools and Assists odds get better as their gacha levels up; Keychain odds never change. Everything uses what you\'ve entered in the other tabs.',
   house: 'There are 5 shelves, and you display one item from each. The display bonuses of all 5 shelves (and your keychains\' equip bonuses) add up per stat into one multiplier, so an item that\'s the only one giving its stat counts in full: +1,600% ATK on its own is ×17. Every item you own also keeps its owned bonus when it isn\'t displayed. Past level 100, raising an item\'s cap takes little-house big candies.',
   guide: 'Dishes entries level up with your foods: each level needs every dish in the set at that level, so the ranking shows which foods to raise. Home events level up from seeing one scene enough times, and sets and memories unlock once. Weapons, tools and assists come from the gacha, so they\'re shown but not ranked.',
@@ -2083,7 +2167,7 @@ const CAT_INTRO = {
   train: 'Which Training node to level next, per Training Pt. Locked nodes that are worth reaching show the whole path, so a branch through coin or HP nodes can still win.',
   study: 'Which Study panel to research next, per whistle candy. Each level also takes time (shown at base study speed); locked panels that are worth reaching show the whole path.',
 };
-const FEATURES = { gacha: sectionGacha, candy: sectionTeam, assist: sectionAssists, gear: sectionGear, kc: sectionKeychains, house: sectionHouse,
+const FEATURES = { shop: sectionShop, gacha: sectionGacha, candy: sectionTeam, assist: sectionAssists, gear: sectionGear, kc: sectionKeychains, house: sectionHouse,
   train: () => sectionTree('training'), study: () => sectionTree('study') };
 
 function renderUpgrades() {
@@ -2105,7 +2189,7 @@ function renderUpgrades() {
   v.innerHTML = `
     ${FEATURES[ui.cat] ? '<div id="feature" class="stack"></div>' : ''}
     <p class="muted small" style="margin:0">${esc(CAT_INTRO[ui.cat])}</p>
-    ${ui.cat === 'assist' || ui.cat === 'gear' || ui.cat === 'gacha' ? '' : '<div class="stack" id="rank"></div>'}
+    ${ui.cat === 'assist' || ui.cat === 'gear' || ui.cat === 'gacha' || ui.cat === 'shop' ? '' : '<div class="stack" id="rank"></div>'}
     <div id="inv-wrap"></div>`;
   if (FEATURES[ui.cat]) FEATURES[ui.cat]();
   renderRanking();
@@ -2173,6 +2257,7 @@ function itemPill(c) {
   return '';
 }
 function renderRanking() {
+  if (ui.cat === 'shop') return;
   if (ui.cat === 'food') renderCandyPlan();
   const box = $('#rank'); if (!box) return;
   const all = candidates(ui.cat, st, base);
@@ -2250,7 +2335,7 @@ function afterDone() {
   renderRanking(); refreshFeature(); renderEditor();
   if (ui.cat === 'candy' && typeof sectionTeam === 'function') sectionTeam();
 }
-function catNoun() { return { gacha: 'gacha levels & gems', gear: 'weapons & tools', home: 'home items', food: 'food', candy: 'outfits', assist: 'assists', kc: 'keychains', house: 'little house', guide: 'handbook' }[ui.cat]; }
+function catNoun() { return { shop: 'trading post', gacha: 'gacha levels & gems', gear: 'weapons & tools', home: 'home items', food: 'food', candy: 'outfits', assist: 'assists', kc: 'keychains', house: 'little house', guide: 'handbook' }[ui.cat]; }
 
 /* ---------------- inventory editors ---------------- */
 function numInput(id, val, min, max, label) {
@@ -2262,7 +2347,7 @@ function fxSummary(list) {
 }
 function renderEditor() {
   const w = $('#inv-wrap'); if (!w) return;
-  if (ui.cat === 'train' || ui.cat === 'study') { w.innerHTML = ''; return; }
+  if (ui.cat === 'train' || ui.cat === 'study' || ui.cat === 'shop') { w.innerHTML = ''; return; }
   if (ui.cat === 'guide') { renderHandbook(); return; }
   const fn = { food: editFood, candy: editOutfits, assist: editAssists, kc: editKeychains, house: editHouse,
     train: () => editTree('training'), study: () => editTree('study'), home: editHome, gear: editGear, gacha: editGacha }[ui.cat];
@@ -2336,6 +2421,51 @@ function gachaPrizeNote(p) {
   if (p.type === 'kc') { const s = st.keychains[p.id] || {}; return p.star > (s.star || 0) ? `yours is ${s.star}★` : `merge fuel for ${s.star}★ → ${s.star + 1}★`; }
   const lv = p.type === 'assist' ? ((st.assists[p.id] || {}).lv || 0) : gearLv(st, p.type, p.id);
   return !lv ? 'new' : lv >= 100 ? 'maxed: spare copies' : `Lv ${lv}`;
+}
+/* ======================= TRADING POST: what to buy with outfit tickets ======================= */
+function sectionShop() {
+  const f = $('#feature'); if (!f) return;
+  f.innerHTML = '<div class="empty">Scoring the shop…</div>';
+  clearTimeout(sectionShop.t);
+  sectionShop.t = setTimeout(() => {
+    if (!$('#feature') || ui.cat !== 'shop') return;
+    const sets = shopSets(st);
+    // every outfit set with something you don't own (the shop rotates two re-run sets a month)
+    const avail = Object.keys(D.sets).map(Number).filter(k => k !== 1 && D.costumes.some(c => c.set === k && !st.costumes[c.id]));
+    const chips = avail.map(k => `<button class="chip" data-shopset="${k}" aria-pressed="${sets.includes(k)}">${esc(D.sets[k])}</button>`).join('');
+    const R = sets.length ? tradingPost(st, base, sets) : { rows: [], inc0: cookIncome(st), fillDays: Infinity };
+    const top = R.rows.length ? Math.max(...R.rows.map(r => r.score)) : 1;
+    const nameOf = id => costumeName(COSTUME[id]);
+    const rows = R.rows.map((r, i) => {
+      const team = r.replaces
+        ? `Joins your team in place of ${esc(nameOf(r.replaces))}: <b>${fmtPct(r.gainTeam)}</b> in all (vs ${fmtPct(r.gainMax)} on the bench)`
+        : 'Stays on the bench: your current six outfits deal more, so all of its damage comes from its account-wide bonuses';
+      const coin = r.coinsPerMin > 0
+        ? `Booths: +${gnum(Math.round(r.coinsPerMin))} coins/min (${fmtPct(r.coinsPct)}), about ${gnum(Math.round(r.coinsPerMin * 720))} a day collected → food levels worth <b>${fmtPct(r.coinGain)}</b> over 30 days`
+        : 'Booths: no better than the outfits already cooking';
+      const kc = r.kc ? `<span style="color:var(--pink)">⚠ Keychains (not in the score): ${esc(charName(r.kc.outChar))} leaves the team${r.kc.lost ? `, so ${esc(r.kc.lost)} stops counting (${fmtPct(r.kc.loss)})` : ''}${r.kc.gained ? `; ${esc(r.kc.gained)} starts counting` : ''}. Net ${fmtPct(r.kc.now)}${Math.abs(r.kc.reequip - r.kc.now) > 0.0005 ? `, or ${fmtPct(r.kc.reequip)} after re-equipping the best keychains` : ''}.${(1 + r.gainTeam) * (1 + Math.max(r.kc.now, r.kc.reequip)) < 1 + r.gainMax ? ` Counting keychains, keeping it on the bench is better (${fmtPct(r.gainMax)} vs ${fmtPct((1 + r.gainTeam) * (1 + Math.max(r.kc.now, r.kc.reequip)) - 1)}).` : ''}</span>` : '';
+      return `<li class="up${i === 0 ? ' top' : ''}">
+        <span class="pos">${i + 1}</span>
+        <div class="what"><div class="name">${esc(r.name)} <span class="pill">${esc(BOOTH_DISH[r.cook] || '')}</span></div><div class="act">At Lv 100: ${fmtPct(r.gain100)} · at Lv 200, promotion 5: ${fmtPct(r.gainTeam)}</div></div>
+        <div class="gain" title="Damage once maxed, plus the food levels its booth coins buy over 30 days">${fmtPct(r.score)}</div>
+        <div class="bar" aria-hidden="true"><b style="width:${Math.max(2, Math.min(100, 100 * r.score / (top || 1)))}%"></b></div>
+        <div class="meta" style="flex-direction:column;align-items:flex-start;gap:2px"><span>${team}</span><span>${coin}</span>${kc ? `<span>${kc}</span>` : ''}</div>
+      </li>`;
+    }).join('');
+    const fill = isFinite(R.fillDays) && R.fillDays < 30
+      ? ` Your booths already make enough to fill every food to its current cap in about ${Math.ceil(R.fillDays)} days, so past that the extra coins mostly get you there sooner, until you raise food caps.` : '';
+    $('#feature').innerHTML = `<section class="card stack"><h2>In the shop now</h2>
+        <div class="row" style="flex-wrap:wrap;gap:6px">${chips}</div>
+        <p class="muted small" style="margin:0">Tap the two sets the Trading Post is selling this month. Outfits you already own can't be bought, so they're left out.</p></section>
+      <section class="card stack"><div class="row" style="justify-content:space-between"><h2>Best outfit for 10 tickets</h2><span class="muted small">damage once maxed</span></div>
+        ${R.rows.length ? `<ol class="rank">${rows}</ol>` : '<div class="empty">Pick the sets in the shop above.</div>'}
+        <p class="muted small" style="margin:0">Max level costs about ${gnum(smallCandies(st, expCost(4, 1, 200)) || 0)} small candies and 200 outfit big candies; the Lv 100 figure is the nearer goal. Promotion adds the same ATK to every 6★ outfit, so the order comes from each outfit's level bonuses and whether it makes your team. Coins: your booths make ${gnum(Math.round(R.inc0))}/min now; an outfit's extra is counted as 12 hours collected a day for 30 days, spent on the food levels that add the most damage.${fill} These outfits' level bonuses come from game data and haven't been checked in the game yet.</p></section>`;
+    $('#feature').querySelectorAll('[data-shopset]').forEach(b => b.onclick = () => {
+      const k = +b.dataset.shopset, cur = shopSets(st);
+      st.shop = { sets: cur.includes(k) ? cur.filter(x => x !== k) : cur.concat(k) };
+      scheduleSave(); sectionShop();
+    });
+  }, 30);
 }
 function sectionGacha() {
   const f = $('#feature'); if (!f) return;
