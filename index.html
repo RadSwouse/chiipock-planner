@@ -1545,6 +1545,25 @@ function bestAssists(st, base) {
   const top = []; for (const sd of seeds) { const r = climb(sd); if (!top.some(x => x.set.slice().sort().join() === r.set.slice().sort().join())) top.push(r); }
   // also your own team as it is (its keychains re-checked below), so a near-tie never replaces it
   if (!top.some(x => x.set.slice().sort().join() === now.slice().sort().join())) top.push(evalSet(now));
+  // keychain-led teams: a strong keychain whose assist isn't on the team (a new 5★, say) only pays off when the
+  // assist comes in AND its character wears it. The quick per-keychain values above can miss that pair, so try it
+  // directly: bring the assist in for the slot your team misses least, put the keychain on, and keep the best one.
+  {
+    const ctxChars = context(st).chars, nowChars = new Set(now.map(id => ASSIST[id].char));
+    scratch.assistTeam = now.slice().sort((a, b) => pri(b) - pri(a)); setEq(curEq); const tNow = score();
+    let weakest = 0, wt = -1;
+    now.forEach((id, i) => { scratch.assistTeam = now.filter((_, j) => j !== i); setEq(curEq); const t = score(); if (t > wt) { wt = t; weakest = i; } });
+    let lead = null;
+    for (const ch in kcs) for (const kid of kcs[ch]) {
+      const ks = st.keychains[kid], a = KEYCHAIN[kid].assist;
+      if (!(ks.star >= 4) || nowChars.has(a) || !ctxChars.has(+ch)) continue;
+      const aid = owned.find(x => ASSIST[x].char === a); if (!aid) continue;
+      const set = now.map((y, j) => j === weakest ? aid : y), pick = Object.assign({}, curEq, { [ch]: kid });
+      scratch.assistTeam = set.slice().sort((p, q) => pri(q) - pri(p)); setEq(pick); const t = score(); n++;
+      if (t > tNow * TIE && (!lead || t > lead.t)) lead = { t, set: scratch.assistTeam.slice(), pick };
+    }
+    if (lead && !top.some(x => x.set.slice().sort().join() === lead.set.slice().sort().join())) top.push(lead);
+  }
   let best = null;
   for (const cand of top) {
     const pick = Object.assign({}, cand.pick);
@@ -1559,11 +1578,14 @@ function bestAssists(st, base) {
     setEq(pick);
     let order = cand.set.slice(), ot = -1;
     for (const perm of permutations(cand.set)) { scratch.assistTeam = perm; const t = score(); n++; if (t > ot * (1 + 1e-9)) { ot = t; order = perm.slice(); } }
-    const mine = cand.set.slice().sort().join() === now.slice().sort().join();
+    // "what you have" = same assists AND same keychains; only that gets the 2% benefit of the doubt
+    const mine = cand.set.slice().sort().join() === now.slice().sort().join() && Object.keys(pick).every(ch => (pick[ch] || 0) === (curEq[ch] || 0));
     if (!best || ot * (mine ? KEEP : 1) > best.total * (best.mine ? KEEP : 1)) best = { assists: order, keychains: pick, total: ot, mine };
   }
   // the keychain changes this team wants ({character: keychain id}, only where it differs from now)
-  const kcChange = {}; for (const ch in best.keychains) if (best.keychains[ch] && best.keychains[ch] !== curEq[ch]) kcChange[ch] = best.keychains[ch];
+  // (team characters only: a keychain on someone off the team does nothing, so a change there is just noise)
+  const teamCh = context(st).chars;
+  const kcChange = {}; for (const ch in best.keychains) if (teamCh.has(+ch) && best.keychains[ch] && best.keychains[ch] !== curEq[ch]) kcChange[ch] = best.keychains[ch];
   return { assists: best.assists, keychains: best.keychains, kcChange, total: best.total, evaluated: n };
 }
 function* permutations(arr) {
