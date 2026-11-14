@@ -1658,7 +1658,9 @@ function bestGear(st, base) {
   return out;
 }
 /* Keychains that could overtake a character's best one with more levels: the lowest level at which they would add
-   more to the banner than the best one does now (its star bonuses counted only if its assist is equipped). */
+   more than the best one does now (its star bonuses counted only if its assist is equipped). Two levels, because they
+   can differ a lot: `at` by the ranking (in boss mode it leaves out Damage to Non-Bosses), `atBanner` by the battle
+   banner, which counts it. */
 function keychainChallengers(st, base, eq) {
   const out = {};
   const withKc = (ch, id, lv) => withChange(st, x => {
@@ -1666,19 +1668,25 @@ function keychainChallengers(st, base, eq) {
     for (const e in eq) if (KEYCHAIN[e].char !== ch) x.keychains[e].eq = true;
     x.keychains[id].eq = true; if (lv) x.keychains[id].lv = lv;
   });
+  const passAt = (ch, id, lv0, now, f) => {
+    if (f(evaluate(withKc(ch, id, 100), base)) <= now) return null;
+    let lo = lv0, hi = 100;  // smallest level that beats the current best
+    if (f(evaluate(withKc(ch, id, lo), base)) > now) hi = lo;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (f(evaluate(withKc(ch, id, mid), base)) > now) hi = mid; else lo = mid + 1; }
+    return hi;
+  };
+  const fT = r => r.total, fB = r => r.bannerShown;
   for (let ch = 1; ch <= 7; ch++) {
     const cur = Object.keys(eq).map(Number).find(id => KEYCHAIN[id].char === ch); if (!cur) continue;
-    const now = evaluate(withKc(ch, cur), base).total;
+    const r0 = evaluate(withKc(ch, cur), base);
     for (const k of D.keychains) {
       const s = st.keychains[k.id];
       if (k.char !== ch || k.id === cur || !s || !(s.star >= 1)) continue;
       const lv0 = Math.max(1, s.lv || 1);
-      if (evaluate(withKc(ch, k.id, 100), base).total <= now) continue;
-      let lo = lv0, hi = 100;  // smallest level that beats the current best
-      if (evaluate(withKc(ch, k.id, lo), base).total > now) hi = lo;
-      while (lo < hi) { const mid = (lo + hi) >> 1; if (evaluate(withKc(ch, k.id, mid), base).total > now) hi = mid; else lo = mid + 1; }
+      const hi = passAt(ch, k.id, lv0, fT(r0), fT); if (hi == null) continue;
+      const atBanner = passAt(ch, k.id, lv0, fB(r0), fB);
       const exp = D.exp[90]; const beads = exp[hi] != null && exp[lv0] != null ? (exp[hi] - exp[lv0]) / 100 : null;
-      (out[ch] = out[ch] || []).push({ id: k.id, lv: lv0, at: hi, beads, assistOn: context(st).achars.has(k.assist) });
+      (out[ch] = out[ch] || []).push({ id: k.id, lv: lv0, at: hi, atBanner, beads, assistOn: context(st).achars.has(k.assist) });
     }
     if (out[ch]) out[ch].sort((a, b) => (a.beads ?? 1e18) - (b.beads ?? 1e18));
   }
@@ -3000,7 +3008,7 @@ function sectionKeychains() {
         const v = k && D.cfx[k.equip] ? fxVal(D.cfx[k.equip].fx, Math.max(1, s.lv || 1)) : 0;
         return `<div class="item"><div class="nm"><b>${esc(charName(c))}</b>${team.has(c) ? '' : ' <span class="muted">· not in your team</span>'}</div>
           <div class="small" style="text-align:right">${k ? `${esc(assistName(k.assist))} ${s.star}★ Lv ${s.lv || 1}<br><span class="muted">${esc(charName(c))} ATK +${fmtNum(v * 100)}%${s.star >= 2 ? (aon.has(k.assist) ? ' · star bonuses on' : ` · star bonuses off (${esc(assistName(k.assist))} not equipped)`) : ''}</span>` : '<span class="muted">none owned</span>'}
-            ${(ch[c] || []).slice(0, 3).map(x => `<br><span class="small" style="color:var(--sun)">${esc(assistName(KEYCHAIN[x.id].assist))} ${st.keychains[x.id].star}★ (Lv ${x.lv}) passes it at Lv ${x.at}${x.beads != null ? ` · ${fmtNum(x.beads)} beads` : ''}${KEYCHAIN[x.id].tierStar[0] <= st.keychains[x.id].star && !x.assistOn ? ` · more if ${esc(assistName(KEYCHAIN[x.id].assist))} is equipped` : ''}</span>`).join('')}</div></div>`; }).join('')}</div>
+            ${(ch[c] || []).slice(0, 3).map(x => `<br><span class="small" style="color:var(--sun)">${esc(assistName(KEYCHAIN[x.id].assist))} ${st.keychains[x.id].star}★ (Lv ${x.lv}) passes it at Lv ${x.at}${x.atBanner !== x.at ? (st.mode === 'boss' ? ` in boss fights (${x.atBanner == null ? 'never' : 'Lv ' + x.atBanner} on the banner)` : ` (${x.atBanner == null ? 'never' : 'Lv ' + x.atBanner} on the banner)`) : ''}${x.beads != null ? ` · ${fmtNum(x.beads)} beads` : ''}${KEYCHAIN[x.id].tierStar[0] <= st.keychains[x.id].star && !x.assistOn ? ` · more if ${esc(assistName(KEYCHAIN[x.id].assist))} is equipped` : ''}</span>`).join('')}</div></div>`; }).join('')}</div>
       <p class="muted small" style="margin:0">Only equipped keychains count. The equip bonus is that character's ATK and grows with level; the star bonuses only count while the keychain's assist is equipped, so a keychain for an assist you use is worth more. Orange lines are keychains that would beat the current pick once levelled to that level (the beads assume they start from 0 EXP into their level).</p>
       ${same ? '<div class="result">You already have the best keychains equipped.</div>'
         : `<div class="result"><div><b>${fmtPct(gain)}</b> total damage vs what you have equipped now${bannerNote(evaluate(trial, base))}</div>
