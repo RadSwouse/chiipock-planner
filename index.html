@@ -142,6 +142,10 @@ select { padding: 5px 6px; border: 1px solid var(--line); border-radius: 8px; ba
 input[type=checkbox], input[type=radio] { accent-color: var(--pink); width: 18px; height: 18px; }
 .sub-h { font-family: var(--f-display); font-weight: 700; font-size: .85rem; color: var(--muted); padding-top: 10px; letter-spacing: .03em; }
 .item.off .nm { color: var(--muted); }
+.kc-ch { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; margin-top: 2px; padding: 8px 10px; border-radius: 10px; background: var(--chip); }
+.kc-row { display: flex; flex-direction: column; gap: 1px; font-size: .88rem; }
+.kc-row .small { color: var(--sun); }
+.pill.swap { background: transparent; border: 1px solid var(--sun); color: var(--sun); margin-left: 4px; }
 
 /* team */
 .slots { display: flex; flex-direction: column; gap: 6px; }
@@ -1718,6 +1722,7 @@ function keychainChallengers(st, base, eq) {
   for (let ch = 1; ch <= 7; ch++) {
     const cur = Object.keys(eq).map(Number).find(id => KEYCHAIN[id].char === ch); if (!cur) continue;
     const r0 = evaluate(withKc(ch, cur), base);
+    const c100 = evaluate(withKc(ch, cur, 100), base);  // the current keychain maxed: what a challenger must beat long-term
     for (const k of D.keychains) {
       const s = st.keychains[k.id];
       if (k.char !== ch || k.id === cur || !s || !(s.star >= 1)) continue;
@@ -1735,10 +1740,12 @@ function keychainChallengers(st, base, eq) {
       }
       if (hi == null) continue;
       const exp = D.exp[90]; const beads = exp[hi] != null && exp[lv0] != null ? (exp[hi] - exp[lv0]) / 100 : null;
-      // what it adds over the current best once taken to Lv100 (with the assist swap, if one was used)
+      // both maxed: the challenger at Lv100 (with the assist swap, if one was used) against the current one at Lv100.
+      // One that only passes because the current keychain isn't maxed yet is left out.
       const r100 = evaluate(withKc(ch, k.id, 100, swapIn ? team0.map(a => a === swapOut ? swapIn : a) : null), base);
-      (out[ch] = out[ch] || []).push({ id: k.id, lv: lv0, at: hi, atBanner, beads, assistOn: on, swapIn, swapOut,
-        gain100: fT(r100) / fT(r0) - 1, gain100B: fB(r100) / fB(r0) - 1 });
+      const gain100 = fT(r100) / fT(c100) - 1, gain100B = fB(r100) / fB(c100) - 1;
+      if (!(gain100 > 5e-4)) continue;
+      (out[ch] = out[ch] || []).push({ id: k.id, lv: lv0, at: hi, atBanner, beads, assistOn: on, swapIn, swapOut, gain100, gain100B });
     }
     // best ceiling first: a keychain close to Lv100 is only worth replacing by one that ends up well ahead of it
     if (out[ch]) out[ch].sort((a, b) => b.gain100 - a.gain100 || (a.beads ?? 1e18) - (b.beads ?? 1e18));
@@ -3034,6 +3041,14 @@ function kcChallengerPick(list) {
   if (bestB && !top.includes(bestB) && bestB.gain100B > top.reduce((m, x) => Math.max(m, x.gain100B), -1)) top.push(bestB);
   return top;
 }
+function kcChallengerRows(list) {
+  const pick = kcChallengerPick(list); if (!pick.length) return '';
+  const lvB = x => x.atBanner !== x.at ? ` <span class="muted">(banner: ${x.atBanner == null ? 'never' : 'Lv ' + x.atBanner})</span>` : '';
+  const gB = x => Math.abs(x.gain100B - x.gain100) > 0.005 ? ` <span class="muted">(banner: ${fmtPct(x.gain100B)})</span>` : '';
+  return `<div class="kc-ch"><div class="muted small">Could overtake it</div>${pick.map(x => `<div class="kc-row">
+      <div><b>${esc(assistName(KEYCHAIN[x.id].assist))} ${st.keychains[x.id].star}★</b> <span class="muted">Lv ${x.lv}</span>${x.swapIn ? ` <span class="pill swap" title="${esc(ASSIST[x.swapIn].name)} in place of ${esc(ASSIST[x.swapOut].name)}">Needs assist swap</span>` : ''}</div>
+      <div class="small">Passes at Lv ${x.at}${lvB(x)} · <b>${fmtPct(x.gain100)}</b> at Lv 100${gB(x)}${x.beads != null ? ` · ${fmtNum(x.beads)} beads` : ''}</div></div>`).join('')}</div>`;
+}
 function sectionKeychains() {
   const f = $('#feature'); if (!f) return;
   const eq = bestKeychains(st, base);
@@ -3063,13 +3078,13 @@ function sectionKeychains() {
       <div class="result"><div><b>${fmtPct(jGain)}</b> fight damage vs now · assists in order: ${J.assists.map(id => esc(ASSIST[id].name)).join(' → ')}</div>${bannerNote(evaluate(withChange(st, x => { x.assistTeam = J.assists.slice(); for (const id in x.keychains) x.keychains[id].eq = jPick[KEYCHAIN[id].char] == id; }), base))}
         <div class="row"><button class="btn primary" id="use-joint">I've done both</button></div></div>
     </section>` : ''}<section class="card stack">
-      <div class="row" style="justify-content:space-between"><h2>Keychains to equip</h2><span class="muted small">${showJ ? 'with your current assists' : 'one per character'}</span></div>
+      <div class="row" style="justify-content:space-between"><h2>Keychains to equip</h2>${showJ ? '<span class="muted small">with your current assists</span>' : ''}</div>
       <div class="items">${[1, 2, 3, 4, 5, 6, 7].map(c => { const id = byChar[c]; const k = id && KEYCHAIN[id]; const s = id && st.keychains[id];
         const v = k && D.cfx[k.equip] ? fxVal(D.cfx[k.equip].fx, Math.max(1, s.lv || 1)) : 0;
         return `<div class="item"><div class="nm"><b>${esc(charName(c))}</b>${team.has(c) ? '' : ' <span class="muted">· not in your team</span>'}</div>
           <div class="small" style="text-align:right">${k ? `${esc(assistName(k.assist))} ${s.star}★ Lv ${s.lv || 1}<br><span class="muted">${esc(charName(c))} ATK +${fmtNum(v * 100)}%${s.star >= 2 ? (aon.has(k.assist) ? ' · star bonuses on' : ` · star bonuses off (${esc(assistName(k.assist))} not equipped)`) : ''}</span>` : '<span class="muted">none owned</span>'}
-            ${kcChallengerPick(ch[c] || []).map(x => `<br><span class="small" style="color:var(--sun)">${esc(assistName(KEYCHAIN[x.id].assist))} ${st.keychains[x.id].star}★ (Lv ${x.lv}) passes it at Lv ${x.at}${x.atBanner !== x.at ? (st.mode === 'boss' ? ` in boss fights (${x.atBanner == null ? 'never' : 'Lv ' + x.atBanner} on the banner)` : ` (${x.atBanner == null ? 'never' : 'Lv ' + x.atBanner} on the banner)`) : ''}${` · ${fmtPct(x.gain100)} at Lv 100${Math.abs(x.gain100B - x.gain100) > 0.005 ? ` (${fmtPct(x.gain100B)} on the banner)` : ''}`}${x.beads != null ? ` · ${fmtNum(x.beads)} beads to pass` : ''}${x.swapIn ? ` · with ${esc(ASSIST[x.swapIn].name)} in your assists in place of ${esc(ASSIST[x.swapOut].name)}` : KEYCHAIN[x.id].tierStar[0] <= st.keychains[x.id].star && !x.assistOn ? ` · more if ${esc(assistName(KEYCHAIN[x.id].assist))} is equipped` : ''}</span>`).join('')}</div></div>`; }).join('')}</div>
-      <p class="muted small" style="margin:0">Only equipped keychains count. The equip bonus is that character's ATK and grows with level; the star bonuses only count while the keychain's assist is equipped, so a keychain for an assist you use is worth more. Orange lines are keychains that would beat the current pick once levelled to that level (the beads assume they start from 0 EXP into their level).</p>
+          </div>${kcChallengerRows(ch[c] || [])}</div>`; }).join('')}</div>
+      <p class="muted small" style="margin:0">Only equipped keychains count. The equip bonus is that character's ATK and grows with level; the star bonuses only count while the keychain's assist is equipped. <b>Could overtake it</b> lists keychains you own that beat the current pick once levelled: the level where they pass it as it is now, what they add with both at Lv 100, and the beads to get there (from 0 EXP into their level). <b>Needs assist swap</b> means it only wins with its assist equipped in place of one of yours.</p>
       ${same ? '<div class="result">You already have the best keychains equipped.</div>'
         : `<div class="result"><div><b>${fmtPct(gain)}</b> total damage vs what you have equipped now${bannerNote(evaluate(trial, base))}</div>
           <div class="row"><button class="btn primary" id="use-kc">I've equipped these</button></div></div>`}
