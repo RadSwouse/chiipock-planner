@@ -119,7 +119,9 @@ ol.rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction
 .bar { grid-column: 2 / 4; height: 4px; background: var(--chip); border-radius: 999px; overflow: hidden; }
 .bar b { display: block; height: 100%; background: var(--mint); border-radius: 999px; }
 .pill { display: inline-block; font-size: .72rem; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--chip); color: var(--ink); letter-spacing: .02em; }
-.r1 { background: var(--chip); } .r2 { background: var(--sun-soft); } .r3 { background: var(--pink-soft); }
+/* rarity colours as in the game: ★4 purple, ★5 orange, ★6 lime green */
+.r1 { background: #C492F1; color: #2A1840; } .r2 { background: #F5A03A; color: #3A2208; } .r3 { background: #8FD45A; color: #18330A; }
+.pill.hbk { background: var(--sun-soft); }
 .more { align-self: flex-start; }
 .empty { padding: 18px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 12px; font-size: .9rem; }
 
@@ -145,6 +147,19 @@ input[type=checkbox], input[type=radio] { accent-color: var(--pink); width: 18px
 .kc-ch { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; margin-top: 2px; padding: 8px 10px; border-radius: 10px; background: var(--chip); }
 .kc-row { display: flex; flex-direction: column; gap: 1px; font-size: .88rem; }
 .kc-row .small { color: var(--sun); }
+.sets { display: flex; flex-direction: column; gap: 6px; }
+details.set { border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+details.set > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-weight: 600; font-size: .92rem; }
+details.set > summary::-webkit-details-marker { display: none; }
+details.set > summary::before { content: "▸"; color: var(--muted); font-size: .8rem; width: 10px; }
+details.set[open] > summary::before { content: "▾"; }
+details.set[open] > summary { border-bottom: 1px solid var(--line); }
+details.set .set-n { margin-left: auto; font-size: .78rem; font-weight: 500; color: var(--muted); white-space: nowrap; }
+details.set .set-n.some { color: var(--ink); } details.set .set-n.all { color: var(--mint); }
+details.set > .items { padding: 0 12px; }
+details.set .item.off { opacity: .55; }
+details.set .item.off b { font-weight: 500; }
+.own-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--mint); margin-right: 7px; transform: translateY(-1px); }
 .pill.swap { background: transparent; border: 1px solid var(--sun); color: var(--sun); margin-left: 4px; }
 
 /* team */
@@ -2228,7 +2243,7 @@ const SINGULAR = { cook: 'cooking pt', scandy: 'small candy', bfood: 'food big c
 const GROUP_ORDER = { food: ['cook', 'bfood'], candy: ['scandy', 'bcos'], kc: ['copies', 'kcboost'], house: ['button', 'bhouse'], guide: ['cook', 'views', 'memory'], home: ['hmat'], train: ['tpt', 'spt'], study: ['whistle'] };
 const CAT_INTRO = {
   food: 'Food bonuses grow every level. Cooking points level them; food big candies raise the level cap 20 levels at a time.',
-  candy: 'Outfits only add damage at their bonus milestones (Lv 10, 25, 50, 70, 100) and when promoted. Small candies spent between milestones add nothing. Outfit big candies raise the level cap.',
+  candy: 'Outfits only add damage at their bonus milestones (Lv 10, 25, 50, 70, 100) and when promoted.',
   assist: 'Assists only level up from duplicate pulls, so this picks the 6 to equip, the order to equip them in (that\'s the order they fire at the start of a fight) and the keychains that go with them. Buff and debuff assists are scored by how much they raise everyone else\'s damage while they\'re up, including the outfits\' special attacks.',
   kc: 'Keychain equip bonuses increase the character\'s ATK. Star bonuses only count while the keychain\'s assist is equipped. 1 bead = 100 EXP, and leftover EXP carries into the next level.',
   gear: 'Weapons and tools only level up from gacha copies (Lv 1–100). Every one you own gives its bonus effect, and the one weapon and one tool you equip also give their equip bonus (a tool\'s is HP). Enter what you own and its level; Handbook weapon & tool sets are then worked out for you.',
@@ -2323,7 +2338,7 @@ function costText(c) {
   return `${fmtNum(c.cost.n)} ${RES[c.cost.res]}`;
 }
 function itemPill(c) {
-  if (c.cat === 'food' && c.sub === 'set') return '<span class="pill r2">Handbook set</span>';
+  if (c.cat === 'food' && c.sub === 'set') return '<span class="pill hbk">Handbook set</span>';
   if (c.cat === 'food') return `<span class="pill r${c.rarity}">${RAR[c.rarity]}</span>`;
   if (c.cat === 'kc') return `<span class="pill">${c.star}★</span>`;
   if (c.sub) return `<span class="pill">${esc(c.sub)}</span>`;
@@ -2377,7 +2392,7 @@ function renderRanking() {
       </li>`;
     }).join('')}</ol>`;
     if (list.length > 6) html += `<button class="btn ghost more" data-more="${key}">${ui.showAll[key] ? 'Show fewer' : `Show all ${list.length}`}</button>`;
-    if (dead.length) html += `<p class="muted small" style="margin:0">${dead.length} more ${dead.length === 1 ? 'upgrade adds' : 'upgrades add'} no damage (HP, coins, or a bonus that needs a condition you don't meet).</p>`;
+    if (dead.length) html += `<p class="muted small" style="margin:0">${dead.length} more ${dead.length === 1 ? 'upgrade adds' : 'upgrades add'} no damage.</p>`;
     html += `</section>`;
   }
   box.innerHTML = html;
@@ -2430,6 +2445,7 @@ function renderEditor() {
     <div class="inv-body">${title ? `<p class="muted small" style="margin:0">${title}</p>` : ''}${body}</div></details>`;
   $('#inv-details').addEventListener('toggle', e => { ui.invOpen = e.target.open; });
   w.querySelectorAll('input,select').forEach(el => el.addEventListener('change', onEdit));
+  w.querySelectorAll('details.set').forEach(d => d.addEventListener('toggle', () => { ui.openSets[d.open ? 'add' : 'delete'](+d.dataset.set); }));
   w.querySelectorAll('[data-kcchar]').forEach(b => b.onclick = () => { ui.kcChar = +b.dataset.kcchar; renderEditor(); });
   w.querySelectorAll('[data-gearkind]').forEach(b => b.onclick = () => { ui.gearKind = b.dataset.gearkind; renderEditor(); });
 }
@@ -2448,12 +2464,19 @@ function editOutfits() {
   const sets = {};
   for (const c of D.costumes.slice().sort((a, b) => a.sort - b.sort)) (sets[c.set] = sets[c.set] || []).push(c);
   const owned = Object.keys(st.costumes).length;
-  const body = Object.entries(sets).map(([set, list]) => `<div class="sub-h">${esc(D.sets[set])} · ${RAR[list[0].rarity]}</div><div class="items">${list.map(c => {
-    const s = st.costumes[c.id] || { lv: 0, promo: 0 };
-    return `<div class="item${s.lv ? '' : ' off'}"><div class="nm">${esc(charName(c.char))}</div>
-      <div class="ctl">${numInput('cos-lv-' + c.id, s.lv || 0, 0, 200, 'Lv')}${numInput('cos-pr-' + c.id, s.promo || 0, 0, 5, 'Promo')}</div></div>`;
-  }).join('')}</div>`).join('');
-  return { title: 'Lv 0 means not owned. Promo is how many times you\'ve promoted it (0–5).', count: `${owned} of ${D.costumes.length} owned`, body };
+  ui.openSets = ui.openSets || new Set();
+  const body = `<div class="sets">${Object.entries(sets).map(([set, list]) => {
+    const have = list.filter(c => st.costumes[c.id] && st.costumes[c.id].lv >= 1).length;
+    return `<details class="set" data-set="${set}"${ui.openSets.has(+set) ? ' open' : ''}><summary>
+        <span class="set-nm">${esc(D.sets[set])}</span> <span class="pill r${list[0].rarity}">${RAR[list[0].rarity]}</span>
+        <span class="set-n${have ? (have === list.length ? ' all' : ' some') : ''}">${have} / ${list.length} owned</span></summary>
+      <div class="items">${list.map(c => {
+        const s = st.costumes[c.id] || { lv: 0, promo: 0 }, own = s.lv >= 1;
+        return `<div class="item${own ? ' own' : ' off'}"><div class="nm">${own ? '<span class="own-dot" aria-hidden="true"></span>' : ''}<b>${esc(charName(c.char))}</b>${own ? '' : ' <span class="muted">· not owned</span>'}</div>
+          <div class="ctl">${numInput('cos-lv-' + c.id, s.lv || 0, 0, 200, 'Lv')}${numInput('cos-pr-' + c.id, s.promo || 0, 0, 5, 'Promo')}</div></div>`;
+      }).join('')}</div></details>`;
+  }).join('')}</div>`;
+  return { title: 'Tap a collection to open it. Set Lv to 0 for outfits you don\'t own. Promo is how many times you\'ve promoted it (0–5).', count: `${owned} of ${D.costumes.length} owned`, body };
 }
 // copies a gacha item (weapon, tool or assist) needs for its next level, as the game shows it
 function copiesText(lv) {
@@ -2682,7 +2705,7 @@ function editHome() {
     const lv = homeLv(st, h.id);
     const opts = [0]; for (let l = 1; l <= h.max; l++) opts.push(l);
     return `<div class="item${lv ? '' : ' off'}"><div class="nm">${esc(homeName(h))} <span class="pill">${h.star}★</span>
-        ${evItems.has(h.id) ? '<span class="pill r2">Handbook</span>' : ''}<br><span class="muted">${esc(h.area || '')}${h.chars && h.chars.length ? ' · ' + esc(h.chars.join(', ')) : ''} · max Lv ${h.max} · scenes ${h.scenes.join(', ')}</span>
+        ${evItems.has(h.id) ? '<span class="pill hbk">Handbook</span>' : ''}<br><span class="muted">${esc(h.area || '')}${h.chars && h.chars.length ? ' · ' + esc(h.chars.join(', ')) : ''} · max Lv ${h.max} · scenes ${h.scenes.join(', ')}</span>
         ${h.how ? `<details class="mem" style="margin-top:4px"><summary>How to get</summary><ul class="small" style="margin:4px 0 2px;padding-left:18px">${h.how.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`
           : (h.added ? '' : '<div class="small muted" style="margin-top:2px">How to get: not listed in the game data</div>')}</div>
       <div class="ctl"><label for="home-lv-${h.id}">Level<select id="home-lv-${h.id}">${opts.map(l => `<option value="${l}"${l === lv ? ' selected' : ''}>${l ? 'Lv ' + l : 'not owned'}</option>`).join('')}</select></label></div></div>`;
@@ -2905,8 +2928,8 @@ function sectionTeam() {
     `<optgroup label="${esc(charName(c))}">${byChar[c].sort((a, b) => COSTUME[a].sort - COSTUME[b].sort).map(id =>
       `<option value="${id}"${id == sel ? ' selected' : ''}>${esc(costumeName(COSTUME[id]))} · Lv ${st.costumes[id].lv}</option>`).join('')}</optgroup>`).join('');
   f.innerHTML = `<section class="card stack">
-      <div class="row" style="justify-content:space-between"><h2>Your team</h2><span class="muted small">slot 1 fires first</span></div>
-      <p class="muted small" style="margin:0">One outfit per character. In a boss fight (35 s) every special is charged at the start and they go off in slot order about 1 s apart, then whoever is ready first. Buffs and debuffs only help the hits that land while they're up, so order matters.</p>
+      <h2>Your team</h2>
+      <p class="muted small" style="margin:0">One outfit per character. Specials go off in team order when multiple are ready.</p>
       <div class="slots">${team.map((id, i) => `<div class="slot"><span class="i">${i + 1}</span>
         <select id="team-${i}" aria-label="Team slot ${i + 1}">${cosOptions(id)}</select>
         <span class="row" style="gap:4px"><button class="mv" data-mv="team:${i}:-1" aria-label="Move up"${i ? '' : ' disabled'}>↑</button><button class="mv" data-mv="team:${i}:1" aria-label="Move down"${i < 5 ? '' : ' disabled'}>↓</button></span>${firesOf(id) ? `<span class="fires">${firesOf(id)}</span>` : ''}</div>`).join('')}</div>
