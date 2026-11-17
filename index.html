@@ -120,7 +120,7 @@ ol.rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction
 .bar b { display: block; height: 100%; background: var(--mint); border-radius: 999px; }
 .pill { display: inline-block; font-size: .72rem; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--chip); color: var(--ink); letter-spacing: .02em; }
 /* rarity colours as in the game: ★4 purple, ★5 orange, ★6 lime green */
-.r1 { background: #C492F1; color: #2A1840; } .r2 { background: #F5A03A; color: #3A2208; } .r3 { background: #8FD45A; color: #18330A; }
+.r1 { background: #C492F1; color: #2A1840; } .r2 { background: #F4A854; color: #3A2208; } .r3 { background: #8FD45A; color: #18330A; }
 .pill.hbk { background: var(--sun-soft); }
 .more { align-self: flex-start; }
 .empty { padding: 18px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 12px; font-size: .9rem; }
@@ -2465,18 +2465,19 @@ function editOutfits() {
   for (const c of D.costumes.slice().sort((a, b) => a.sort - b.sort)) (sets[c.set] = sets[c.set] || []).push(c);
   const owned = Object.keys(st.costumes).length;
   ui.openSets = ui.openSets || new Set();
+  const onTeam = new Set(teamOf(st));
   const body = `<div class="sets">${Object.entries(sets).map(([set, list]) => {
     const have = list.filter(c => st.costumes[c.id] && st.costumes[c.id].lv >= 1).length;
     return `<details class="set" data-set="${set}"${ui.openSets.has(+set) ? ' open' : ''}><summary>
         <span class="set-nm">${esc(D.sets[set])}</span> <span class="pill r${list[0].rarity}">${RAR[list[0].rarity]}</span>
         <span class="set-n${have ? (have === list.length ? ' all' : ' some') : ''}">${have} / ${list.length} owned</span></summary>
       <div class="items">${list.map(c => {
-        const s = st.costumes[c.id] || { lv: 0, promo: 0 }, own = s.lv >= 1;
-        return `<div class="item${own ? ' own' : ' off'}"><div class="nm">${own ? '<span class="own-dot" aria-hidden="true"></span>' : ''}<b>${esc(charName(c.char))}</b>${own ? '' : ' <span class="muted">· not owned</span>'}</div>
+        const s = st.costumes[c.id] || { lv: 0, promo: 0 }, own = s.lv >= 1, eqd = own && onTeam.has(c.id);
+        return `<div class="item${own ? ' own' : ' off'}"><div class="nm">${eqd ? '<span class="own-dot" title="In your team"></span>' : ''}<b>${esc(charName(c.char))}</b>${own ? (eqd ? ' <span class="muted">· in your team</span>' : '') : ' <span class="muted">· not owned</span>'}</div>
           <div class="ctl">${numInput('cos-lv-' + c.id, s.lv || 0, 0, 200, 'Lv')}${numInput('cos-pr-' + c.id, s.promo || 0, 0, 5, 'Promo')}</div></div>`;
       }).join('')}</div></details>`;
   }).join('')}</div>`;
-  return { title: 'Tap a collection to open it. Set Lv to 0 for outfits you don\'t own. Promo is how many times you\'ve promoted it (0–5).', count: `${owned} of ${D.costumes.length} owned`, body };
+  return { title: 'Tap a collection to open it. A green dot marks outfits in your team. Set Lv to 0 for outfits you don\'t own. Promo is how many times you\'ve promoted it (0–5).', count: `${owned} of ${D.costumes.length} owned`, body };
 }
 // copies a gacha item (weapon, tool or assist) needs for its next level, as the game shows it
 function copiesText(lv) {
@@ -2704,7 +2705,7 @@ function editHome() {
   const body = `<div class="items">${D.homeItems.map(h => {
     const lv = homeLv(st, h.id);
     const opts = [0]; for (let l = 1; l <= h.max; l++) opts.push(l);
-    return `<div class="item${lv ? '' : ' off'}"><div class="nm">${esc(homeName(h))} <span class="pill">${h.star}★</span>
+    return `<div class="item${lv ? '' : ' off'}"><div class="nm">${esc(homeName(h))} <span class="pill r${h.star - 3}">★${h.star}</span>
         ${evItems.has(h.id) ? '<span class="pill hbk">Handbook</span>' : ''}<br><span class="muted">${esc(h.area || '')}${h.chars && h.chars.length ? ' · ' + esc(h.chars.join(', ')) : ''} · max Lv ${h.max} · scenes ${h.scenes.join(', ')}</span>
         ${h.how ? `<details class="mem" style="margin-top:4px"><summary>How to get</summary><ul class="small" style="margin:4px 0 2px;padding-left:18px">${h.how.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`
           : (h.added ? '' : '<div class="small muted" style="margin-top:2px">How to get: not listed in the game data</div>')}</div>
@@ -3441,8 +3442,7 @@ function renderSettings() {
     <section class="card stack">
       <h2>Your data</h2>
       <p class="muted small" style="margin:0" id="store-note">${db ? 'Saved privately to your account, so it follows you to any device.' : 'Saved in this browser only. Copy a backup below to move it to another device.'}</p>
-      <div class="row"><button class="btn" id="copy-data">Copy backup</button><button class="btn" id="load-example">Load example account</button>
-        <button class="btn" id="clear-all">${ui.confirmClear ? 'Tap again to erase everything' : 'Erase everything'}</button></div>
+      <div class="row"><button class="btn" id="copy-data">Copy backup</button> <button class="btn" id="clear-all">${ui.confirmClear ? 'Tap again to erase everything' : 'Erase everything'}</button></div>
       <label for="import-box" class="small muted">Paste a backup to restore it</label>
       <textarea id="import-box" placeholder='{"v":1,...}'></textarea>
       <div class="row"><button class="btn primary" id="import-btn">Restore backup</button></div>
@@ -3450,7 +3450,7 @@ function renderSettings() {
     <section class="card stack">
       <h2>What's counted</h2>
       <p class="small" style="margin:0">Food, outfit milestones and promotions, assists, weapons and tools (owned and equipped), keychains (stars, levels and equip), little-house items (owned, displayed, conditions), Training, Super Training, Study, handbook entries, team buffs and debuffs, crit, and boss or non-boss damage. Blessings and the coin upgrades on the battle screen aren't ranked, but they're already part of your Stats numbers, so the rankings account for them.</p>
-      <p class="small muted" style="margin:0">Game data from the Chiikawa Pocket datamine (Global client, data through Sept 2026). Names matched from Japanese fan wikis, so in-game English names may differ slightly. Peter Pan outfits are newer than this data.</p>
+      <p class="small muted" style="margin:0">Game data from the Chiikawa Pocket datamine (Global client, data through Sept 2026).</p>
     </section>`;
   renderMix();
   v.querySelectorAll('input[id^=s-]').forEach(inp => inp.onchange = () => {
@@ -3467,7 +3467,6 @@ function renderSettings() {
     try { await navigator.clipboard.writeText(txt); toast('Backup copied'); }
     catch (e) { const b = $('#import-box'); b.value = txt; b.select(); toast('Select-all and copy the text in the box'); }
   };
-  $('#load-example').onclick = () => { st = normalize(exampleState()); recompute(); scheduleSave(); renderAll(); toast('Example account loaded'); };
   $('#clear-all').onclick = () => {
     if (!ui.confirmClear) { ui.confirmClear = true; renderSettings(); setTimeout(() => { ui.confirmClear = false; if (ui.tab === 'set') renderSettings(); }, 4000); return; }
     ui.confirmClear = false; st = normalize(blankState()); recompute(); scheduleSave(); renderAll(); toast('Everything erased');
@@ -3485,9 +3484,9 @@ async function boot() {
   const hash = (location.hash || '').slice(1);
   for (const [k, tok] of Object.entries(TAB_TOKENS)) if (tok === hash) { if (k === 'set') ui.tab = 'set'; else { ui.tab = 'up'; ui.cat = k; } }
   const local = readLocal();
-  st = normalize(local || exampleState());
+  st = normalize(local || blankState());
   recompute(); renderAll();
-  setSave(local ? 'Saved on this device' : 'Example account · not saved');
+  setSave(local ? 'Saved on this device' : 'Not saved yet');
   let found = null;
   // the account database is optional: if it doesn't answer within 8 s (or the browser blocks it), keep working on this device
   const timeout = ms => new Promise(res => setTimeout(() => res(null), ms));
@@ -3499,8 +3498,8 @@ async function boot() {
     const remote = snap.exists ? snap.data() : null;
     if (remote && remote.state) {
       st = normalize(clone(remote.state)); writeLocal(); recompute(); renderAll(); setSave('Saved to your account');
-    } else setSave(local ? 'Saved on this device · syncs to your account on your next change' : 'Example account · not saved');
-  } catch (e) { db = null; setSave(local ? 'Saved on this device' : 'Example account · not saved'); }
+    } else setSave(local ? 'Saved on this device · syncs to your account on your next change' : 'Not saved yet');
+  } catch (e) { db = null; setSave(local ? 'Saved on this device' : 'Not saved yet'); }
   const note = $('#store-note'); if (note && db) note.textContent = 'Saved privately to your account, so it follows you to any device.';
 }
 boot();
