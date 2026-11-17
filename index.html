@@ -1220,7 +1220,7 @@ function keychainCandidates(st, base, bt) {
       // (checked: Lv 50 → 51 shows 0/744, Lv 51 → 52 shows x/773)
       const ap = x => { x.keychains[k.id].lv = L + 1; }, st2 = withChange(st, ap);
       out.push({ apply: ap, cat: 'kc', key: 'kc:' + k.id + ':lv', name, char: k.char, action: `Lv ${L} → ${L + 1}`, star: s.star,
-        gain: gainOf(base, bt, st2), cost: { res: 'kcboost', n: (exp[L + 1] - exp[L]) / 100 }, note: `${exp[L + 1] - exp[L]} EXP` });
+        gain: gainOf(base, bt, st2), cost: { res: 'kcboost', n: (exp[L + 1] - exp[L]) / 100 } });
     }
     if (s.star < 7) {
       const ap = x => { x.keychains[k.id].star = s.star + 1; }, st2 = withChange(st, ap);
@@ -2230,7 +2230,7 @@ const CAT_INTRO = {
   food: 'Food bonuses grow every level. Cooking points level them; food big candies raise the level cap 20 levels at a time.',
   candy: 'Outfits only add damage at their bonus milestones (Lv 10, 25, 50, 70, 100) and when promoted. Small candies spent between milestones add nothing. Outfit big candies raise the level cap.',
   assist: 'Assists only level up from duplicate pulls, so this picks the 6 to equip, the order to equip them in (that\'s the order they fire at the start of a fight) and the keychains that go with them. Buff and debuff assists are scored by how much they raise everyone else\'s damage while they\'re up, including the outfits\' special attacks.',
-  kc: 'Each character equips one keychain (7 in total), and only equipped keychains do anything: the equip bonus is that character\'s ATK (so it counts while the character is in your team), and the star bonuses count while the keychain\'s assist is equipped. Beads: 1 bead = 100 EXP, and leftover EXP carries into the next level.',
+  kc: 'Keychain equip bonuses increase the character\'s ATK. Star bonuses only count while the keychain\'s assist is equipped. 1 bead = 100 EXP, and leftover EXP carries into the next level.',
   gear: 'Weapons and tools only level up from gacha copies (Lv 1–100). Every one you own gives its bonus effect, and the one weapon and one tool you equip also give their equip bonus (a tool\'s is HP). Enter what you own and its level; Handbook weapon & tool sets are then worked out for you.',
   shop: 'Which outfit to trade 10 outfit tickets for. Every outfit you don\'t own yet from the sets in the shop is scored by the damage it adds once maxed (Lv 200, promotion 5): its level bonuses and promotion count for the whole account wherever it sits, plus anything it adds by joining the team. The extra cooking coins it makes in your booths count as the food levels they buy.',
   gacha: 'Where your gems add the most damage. Each pull is scored by every prize it can give: its chance per draw times what one more copy adds (a new item, a share of its next level, or a keychain merge). Weapons & Tools and Assists odds get better as their gacha levels up; Keychain odds never change. Everything uses what you\'ve entered in the other tabs.',
@@ -3084,7 +3084,6 @@ function sectionKeychains() {
         return `<div class="item"><div class="nm"><b>${esc(charName(c))}</b>${team.has(c) ? '' : ' <span class="muted">· not in your team</span>'}</div>
           <div class="small" style="text-align:right">${k ? `${esc(assistName(k.assist))} ${s.star}★ Lv ${s.lv || 1}<br><span class="muted">${esc(charName(c))} ATK +${fmtNum(v * 100)}%${s.star >= 2 ? (aon.has(k.assist) ? ' · star bonuses on' : ` · star bonuses off (${esc(assistName(k.assist))} not equipped)`) : ''}</span>` : '<span class="muted">none owned</span>'}
           </div>${kcChallengerRows(ch[c] || [])}</div>`; }).join('')}</div>
-      <p class="muted small" style="margin:0">Only equipped keychains count. The equip bonus is that character's ATK and grows with level; the star bonuses only count while the keychain's assist is equipped. <b>Could overtake it</b> lists keychains you own that beat the current pick once levelled: the level where they pass it as it is now, what they add with both at Lv 100, and the beads to get there (from 0 EXP into their level). <b>Needs assist swap</b> means it only wins with its assist equipped in place of one of yours.</p>
       ${same ? '<div class="result">You already have the best keychains equipped.</div>'
         : `<div class="result"><div><b>${fmtPct(gain)}</b> total damage vs what you have equipped now${bannerNote(evaluate(trial, base))}</div>
           <div class="row"><button class="btn primary" id="use-kc">I've equipped these</button></div></div>`}
