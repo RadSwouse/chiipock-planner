@@ -994,21 +994,33 @@ var BANNER_NK = 4.55;  // weight of Normal Attack Damage in the banner: fitted N
    equipped keychain gives its star bonuses, even two of the same assist (kcOnePer off). The earlier "fixed 11% part"
    was standing in for that; it isn't needed (BANNER_AST 0, kept as a dial). */
 var BANNER_AST = 0;
-function bannerCharW(st, agg, ctx) {
+/* Total Power (the battle banner), from HuntDataStore.CalculateNormal/SkillAttackTotalPower:
+   per team outfit 500 × ATK × CritRate × CritDmg × Boss × Mob × outfitATK × (NormalAttackDmg + SkillDmg × SpecialDmg × coef / (cooldown × recast s)).
+   coef / recast is 1/5 s for almost every outfit, so the skill part is weighted relative to that (k); Normal and Pajama outfits
+   and a few others have a lower ratio. (The 0.6 × HP term is negligible.) */
+function bannerSkillK(c) {
+  const sk = D.skills[c.skill];
+  // outfits newer than the datamine have an estimated coef: assume the usual 1/5 s
+  return sk && sk.recastMs && !c.est ? Math.min(2, (c.coef || 1) * 5000 / sk.recastMs) : 1;
+}
+function bannerCharW(st, agg, ctx, normal) {
   let w = 0;
   for (const id of ctx.team) {
     const c = COSTUME[id], lv = (st.costumes[id] && st.costumes[id].lv) || 1;
-    w += ((agg.chars[c.char] && agg.chars[c.char].Attack) || 1) * group(c.ar, lv) * (c.bw || 1);
+    w += ((agg.chars[c.char] && agg.chars[c.char].Attack) || 1) * group(c.ar, lv) * (c.bw || 1) * (normal ? 1 : bannerSkillK(c));
   }
   return w;
 }
 function evalBanner(st, S, agg, ctx, shown, base) {
   // the assist-like part is pinned to your current set-up, so character changes don't move it
   const w = bannerCharW(st, agg, ctx) + BANNER_AST * (base && base.w0 != null ? base.w0 : bannerCharW(st, agg, ctx));
-  const crit = 1 + Math.min(1, Math.max(0, S.cr)) * (S.cd - 1);
+  // the game's Total Power multiplies Critical Rate × Critical Damage straight (HuntDataStore.CalculateNormalAttackTotalPower /
+  // CalculateSkillTotalPower), not the expected-hit 1 + rate × (damage − 1) the fight uses; the same at 100% crit rate
+  const crit = Math.max(1e-6, Math.min(1, Math.max(0, S.cr))) * S.cd;
   const bf = BOSS_FRAC[st.mode] ?? 1;
   const bm = shown ? S.boss * S.mob : bf * S.boss + (1 - bf) * S.mob;
-  return S.atk * crit * bm * w * (S.sr * S.ur + BANNER_NK * S.nr);
+  const wN = bannerCharW(st, agg, ctx, true);
+  return S.atk * crit * bm * (w * S.sr * S.ur + wN * BANNER_NK * S.nr);
 }
 
 /* full evaluation of a state relative to a baseline state (the one the status screen describes) */
