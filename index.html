@@ -701,14 +701,17 @@ function FID_OF(cat, e) {
   return null;
 }
 var USE_CHAIN = true;
-const CHAIN_BASE1 = new Set(['NormalAttackDamageRate', 'SkillDamageRate', 'UniqueSkillDamageRate', 'BossDamageRate']);
+const CHAIN_BASE1 = new Set(['NormalAttackDamageRate', 'SkillDamageRate', 'BossDamageRate']);
 const STAT_CHAIN = {
   Attack: 'xW xAS xC xCP xF xH xT xST xS xCB xTr xK +CBa',
   CriticalRate: 'xAS',
   CriticalDamage: 'xW xA xC xF xTr xK +CBa xAS',
   NormalAttackDamageRate: 'xT xF +ST xTr xK xCB',
   SkillDamageRate: 'xW xA xC xF xTr xK +ST +T xCB xAS',
-  UniqueSkillDamageRate: '+C +F +S +Tr xK xCB',
+  // the v2.4.1 code adds Little House bonuses into Special Attack Damage's pool (+Tr), but the game multiplies them:
+  // putting Weeding Art on display in place of Wall Shelves took it from 1.20b% to 28.5a% (÷42 = 1 + Wall Shelves'
+  // 41), Nov 17. Likely the live data made these 'custom' bonuses (like Lively Lights), which multiply on their own.
+  UniqueSkillDamageRate: '+C +F +S xTr xK xCB',
   BossDamageRate: '+C +F +S +Tr xK xCB',
   MobDamageRate: '+C xK',
 };
