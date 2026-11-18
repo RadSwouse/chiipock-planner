@@ -984,7 +984,7 @@ function resetCycle(R, B, resets) {
    skills, cooldowns or buffs. Fitted to the game: 18 Little House swaps, 6 "You Look Like" swaps, two keychain
    level-ups (Momonga vs Rakko ×0.677, exactly as predicted) and the food tests. Normal Attack Damage barely moves it
    (about 0.2%), so it enters with a small calibrated weight next to Special × Special & Assist damage. */
-var BANNER_NK = 4.55;  // weight of Normal Attack Damage in the banner: fitted Nov 8 to a Butter & Soy Sauce Udon level (+3.17t on ~175v)
+var BANNER_NK = 5;  // Normal Attack Damage weight in Total Power, from the game code: special coefficient ÷ recast is 1 per 5 s, and Total Power leaves out the snack buff's cooldown cut (confirmed Nov 17), so it's 5. Two food tests read ~4.5 (the planner's per-level Normal Attack Damage gain looks ~10% high)
 /* The battle banner multiplies in both damage-to-bosses and damage-to-non-bosses (checked Oct 31: a 4★ keychain's
    non-boss bonus moved it ×1.46, and Lively Lights' boss bonus moved it as predicted). A real fight only gets one of
    them, so upgrades are ranked with the one for the chosen fight (shown = false) and the banner estimate uses both. */
@@ -1007,7 +1007,8 @@ function bannerCharW(st, agg, ctx, normal) {
   let w = 0;
   for (const id of ctx.team) {
     const c = COSTUME[id], lv = (st.costumes[id] && st.costumes[id].lv) || 1;
-    w += ((agg.chars[c.char] && agg.chars[c.char].Attack) || 1) * group(c.ar, lv) * (c.bw || 1) * (normal ? 1 : bannerSkillK(c));
+    // bw stands in for an unknown special coefficient (newer outfits), so it only scales the special part
+    w += ((agg.chars[c.char] && agg.chars[c.char].Attack) || 1) * group(c.ar, lv) * (normal ? 1 : (c.bw || 1) * bannerSkillK(c));
   }
   return w;
 }
