@@ -501,7 +501,7 @@ function cfxEffects(id, L, promoMul, out, src) {
     ? fxVal(c.fx, Math.min(src.ctx.prog[c.prog] || 0, group(c.maxG, L)))
     : fxVal(c.fx, L);
   v *= promoMul;
-  const base = { st: c.fx.st, v, src: src.key, cond: c.cond };
+  const base = { st: c.fx.st, v, src: src.key, cond: c.cond, cfx: true };
   if (c.target === 'Party') out.push(Object.assign(base, { scope: 'acct' }));
   else if (c.target === 'SpecificCharacter') for (const ch of c.ids) out.push(Object.assign({}, base, { scope: 'char', who: ch }));
   else if (c.target === 'AssistCharacter') for (const ch of c.ids) out.push(Object.assign({}, base, { scope: 'assist', who: ch }));
@@ -639,7 +639,7 @@ function kcLeads(st) {
 }
 function aggregate(effects, ctx, st) {
   const leads = kcLeads(st);
-  const acct = {}; const flat = {}; const chars = {}; const assists = {};
+  const acct = {}; const flat = {}; const chars = {}; const assists = {}; const buckets = {};
   const bump = (o, cat, v) => { o[cat] = (o[cat] || 0) + v; };
   for (const e of effects) {
     if (e.cond && !condMet(e.cond, ctx)) continue;
@@ -652,6 +652,10 @@ function aggregate(effects, ctx, st) {
     if (e.kc && !e.needA && TIMING.kcNoEquip && TIMING.kcNoEquip.has(KEYCHAIN[e.kc].char)) continue;  // Trading Post: outfit-only comparison  // keychains only count for characters on the team (checked Nov 8)
     const cat = e.cat || (e.cat = srcCat(e.src));
     if (e.scope === 'acct') {
+      // the game's per-stat chain (statChain) works from each calculator's bucket; home items multiply one by one
+      const fb = FID_OF(cat, e);
+      if (fb) { const sb = buckets[e.st] || (buckets[e.st] = {}); const bk = sb[fb] || (sb[fb] = { sum: 0, prod: 1 });
+        bk.sum += e.v; bk.prod *= 1 + e.v; }
       if (e.flat) { flat[e.st] = (flat[e.st] || 0) + e.v; continue; }
       const a = acct[e.st] || (acct[e.st] = { cats: {}, add: 0 });
       bump(a.cats, cat, e.v); a.add += e.v;
@@ -670,26 +674,90 @@ function aggregate(effects, ctx, st) {
   for (const k in acct) acct[k].mul = prod(acct[k].cats);
   for (const w in chars) for (const k in chars[w]) chars[w][k] = prod(chars[w][k]);
   for (const w in assists) for (const k in assists[w].cats) assists[w].mul[k] = prod(assists[w].cats[k]);
-  return { acct, flat, chars, assists };
+  return { acct, flat, chars, assists, buckets };
+}
+
+/* ---- the game's stat assembly (WithNetwork.*BaseStatusCalculator.CreateBaseStatus) ----
+   Each stat starts from a base value and runs through a fixed list of elements, in order: ×(source multiplier) or
+   +(source sum). A source's multiplier is 1 + the sum of its bonuses (weapons: owned + equipped together; little-house
+   items: owned × equipped; home items and outfit promotions: one factor per item). Read from libil2cpp v2.4.1, Nov 17. */
+function FID_OF(cat, e) {
+  if (cat === 'wpn' || cat === 'wpneq') return 'W';
+  if (cat === 'arm' || cat === 'armeq') return 'A';
+  if (cat === 'cos') return 'C';
+  if (cat.startsWith('promo')) return 'CP';
+  if (cat === 'food') return 'F';
+  if (cat === 'home') return 'H';
+  if (cat === 'training1') return 'T';
+  if (cat === 'training2') return 'ST';
+  if (cat === 'study') return 'S';
+  if (cat === 'gb') return e.flat ? 'CBa' : 'CB';
+  if (cat === 'tr') return 'TrP';
+  // custom (conditional / progress / targeted) display bonuses are the game's 'incomplete' statuses: their own
+  // multiplier (Lively Lights' Boss bonus multiplied the banner ×8.5, Oct 31)
+  if (cat === 'equip') return e.cfx ? 'TrI' : 'TrE';
+  if (cat === 'kc') return 'K';
+  if (cat === 'ast') return 'AS';
+  return null;
+}
+var USE_CHAIN = true;
+const CHAIN_BASE1 = new Set(['NormalAttackDamageRate', 'SkillDamageRate', 'UniqueSkillDamageRate', 'BossDamageRate']);
+const STAT_CHAIN = {
+  Attack: 'xW xAS xC xCP xF xH xT xST xS xCB xTr xK +CBa',
+  CriticalRate: 'xAS',
+  CriticalDamage: 'xW xA xC xF xTr xK +CBa xAS',
+  NormalAttackDamageRate: 'xT xF +ST xTr xK xCB',
+  SkillDamageRate: 'xW xA xC xF xTr xK +ST +T xCB xAS',
+  UniqueSkillDamageRate: '+C +F +S +Tr xK xCB',
+  BossDamageRate: '+C +F +S +Tr xK xCB',
+  MobDamageRate: '+C xK',
+};
+for (const k in STAT_CHAIN) STAT_CHAIN[k] = (STAT_CHAIN[k] + ' xTrI').split(' ').map(t => [t[0], t.slice(1)]);
+// value = alpha × base + beta for a stat's chain, given the buckets
+function statChain(stat, agg) {
+  const b = (agg.buckets && agg.buckets[stat]) || {}, g = id => b[id] || { sum: 0, prod: 1 };
+  let alpha = 1, beta = 0;
+  for (const [op, id] of STAT_CHAIN[stat]) {
+    let m, add;
+    if (id === 'Tr') { m = (1 + g('TrP').sum) * (1 + g('TrE').sum); add = g('TrP').sum + g('TrE').sum; }
+    else if (id === 'H' || id === 'CP') { m = g(id).prod; add = g(id).sum; }
+    else { m = 1 + g(id).sum; add = g(id).sum; }
+    if (op === 'x') { alpha *= m; beta *= m; } else beta += add;
+  }
+  return { alpha, beta };
 }
 
 /* status-screen stats adjusted by the difference between two aggregates */
 const STAT_KEYS = { cr: 'CriticalRate', cd: 'CriticalDamage', nr: 'NormalAttackDamageRate', ur: 'UniqueSkillDamageRate',
   sr: 'SkillDamageRate', boss: 'BossDamageRate', mob: 'MobDamageRate', asd: 'AssistSkillDamage' };
-function stackMode(st, stat) { return (st.stack && st.stack[stat]) || DEFAULT_STACK[stat] || 'mul'; }
+function stackMode(st, stat) { return DEFAULT_STACK[stat] || 'mul'; }  // the old per-stat switch; the game's chain (STAT_CHAIN) now decides
 function effectiveStats(st, agg, base) {
   const S = { atk: 1 };
   const ratio = (stat) => {
     const a = agg.acct[stat] || { mul: 1, add: 0 }, b = base.acct[stat] || { mul: 1, add: 0 };
     return { mul: a.mul / b.mul, add: a.add - b.add, flat: (agg.flat[stat] || 0) - (base.flat[stat] || 0) };
   };
-  const r = ratio('Attack'); S.atk = r.mul;
+  // a stat in the game's chain: solve the base from the Stats screen, then rerun the chain with the new bonuses
+  // rate stats start from 1 in the game; if the planner's bonuses can't rebuild the Stats screen from 1, it's missing
+  // a source (Special Attack Damage, Nov 17) and the stat keeps the older per-source-type model
+  const chainFits = (stat, screen) => {
+    if (!CHAIN_BASE1.has(stat)) return true;
+    const c0 = statChain(stat, base), B = (screen - c0.beta) / c0.alpha;
+    return Math.abs(B - 1) < 0.05;
+  };
+  const chained = (stat, screen) => {
+    const c0 = statChain(stat, base), c1 = statChain(stat, agg);
+    const B = (screen - c0.beta) / c0.alpha;
+    return B > 0 && isFinite(B) ? c1.alpha * B + c1.beta : screen * c1.alpha / c0.alpha;
+  };
+  if (USE_CHAIN) { const a0 = statChain('Attack', base), a1 = statChain('Attack', agg); S.atk = a1.alpha / a0.alpha; } else S.atk = ratio('Attack').mul;
   for (const [k, stat] of Object.entries(STAT_KEYS)) {
     const screen = (+st.stats[k] || 0) / 100;
+    if (USE_CHAIN && STAT_CHAIN[stat] && screen > 0 && chainFits(stat, screen)) { S[k] = chained(stat, screen); continue; }
     const d = ratio(stat);
     const mode = stackMode(st, stat);
     let v = mode === 'add' ? screen + d.add : screen * d.mul;
-    v += d.flat;  // flat additions: guidebook "add" entries, Training rate nodes
+    v += d.flat;
     S[k] = v;
   }
   S.spd = Math.max(0.01, +st.stats.spd || 1);
@@ -984,7 +1052,7 @@ function resetCycle(R, B, resets) {
    skills, cooldowns or buffs. Fitted to the game: 18 Little House swaps, 6 "You Look Like" swaps, two keychain
    level-ups (Momonga vs Rakko ×0.677, exactly as predicted) and the food tests. Normal Attack Damage barely moves it
    (about 0.2%), so it enters with a small calibrated weight next to Special × Special & Assist damage. */
-var BANNER_NK = 5;  // Normal Attack Damage weight in Total Power, from the game code: special coefficient ÷ recast is 1 per 5 s, and Total Power leaves out the snack buff's cooldown cut (confirmed Nov 17), so it's 5. Two food tests read ~4.5 (the planner's per-level Normal Attack Damage gain looks ~10% high)
+var BANNER_NK = 4.56;  // Normal Attack Damage weight in Total Power. The code gives 5 (both power coefficients 500 in the Aug data, special coefficient ÷ recast 1 per 5 s, snack cooldown not counted); with Normal Attack Damage now rebuilt exactly from the code's stat chain, two food tests (Seasoned Rice Nov 17: 4.55, Butter & Soy Sauce Udon Nov 8: 4.58) still read 4.56, so a server value has moved since August
 /* The battle banner multiplies in both damage-to-bosses and damage-to-non-bosses (checked Oct 31: a 4★ keychain's
    non-boss bonus moved it ×1.46, and Lively Lights' boss bonus moved it as predicted). A real fight only gets one of
    them, so upgrades are ranked with the one for the chosen fight (shown = false) and the banner estimate uses both. */
@@ -3447,12 +3515,6 @@ function renderSettings() {
       <div class="field"><label for="aoe">Enemies hit by area skills<br><span class="hint">Mob waves and mixed stages only</span></label><input type="number" id="aoe" min="1" max="10" value="${st.aoe}"></div>
     </section>
     <section class="card stack">
-      <h2>How bonuses stack</h2>
-      <p class="muted small" style="margin:0">The game adds bonuses together within each source type (all your foods, all your outfits, Training, Super Training, Study, the Little House, keychains, assists, the Handbook, home items), then multiplies the source types with each other. So a food is worth a lot for a stat your other foods barely give, and very little for one they already give plenty of. Your Cola test showed it: Cola going from +345% to +360% ATK sits on top of +777a% from your other foods, so ATK stayed at 17m. This applies to ATK and to the stats below. "Add everything" is there only for comparison.</p>
-      <div>${STACK_STATS.map(sk => `<div class="field"><label for="k-${sk}">${STATS[sk]}</label>
-        <select id="k-${sk}"><option value="mul"${stackMode(st, sk) === 'mul' ? ' selected' : ''}>By source type (game)</option><option value="add"${stackMode(st, sk) === 'add' ? ' selected' : ''}>Add everything</option></select></div>`).join('')}</div>
-    </section>
-    <section class="card stack">
       <h2>Your data</h2>
       <p class="muted small" style="margin:0" id="store-note">${db ? 'Saved privately to your account, so it follows you to any device.' : 'Saved in this browser only. Copy a backup below to move it to another device.'}</p>
       <div class="row"><button class="btn" id="copy-data">Copy backup</button> <button class="btn" id="clear-all">${ui.confirmClear ? 'Tap again to erase everything' : 'Erase everything'}</button></div>
@@ -3474,7 +3536,6 @@ function renderSettings() {
   v.querySelectorAll('input[name=mode]').forEach(r => r.onchange = () => { st.mode = r.value; changed('quiet'); });
   v.querySelectorAll('input[name=rankby]').forEach(r => r.onchange = () => { st.rankBy = r.value; changed('quiet'); toast(r.value === 'battle' ? 'Ranking by the fight estimate' : 'Ranking by Total Power'); });
   $('#aoe').onchange = e => { st.aoe = clampInt(e.target.value, 1, 10); changed('quiet'); };
-  v.querySelectorAll('select[id^=k-]').forEach(s => s.onchange = () => { st.stack[s.id.slice(2)] = s.value; changed('quiet'); });
   $('#copy-data').onclick = async () => {
     const txt = JSON.stringify(st);
     try { await navigator.clipboard.writeText(txt); toast('Backup copied'); }
