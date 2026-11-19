@@ -740,9 +740,9 @@ function FID_OF(cat, e) {
   if (cat === 'study') return 'S';
   if (cat === 'gb') return e.flat ? 'CBa' : 'CB';
   if (cat === 'tr') return 'TrP';
-  // custom (conditional / progress / targeted) display bonuses are the game's 'incomplete' statuses: their own
-  // multiplier (Lively Lights' Boss bonus multiplied the banner ×8.5, Oct 31)
-  if (cat === 'equip') return e.cfx ? 'TrI' : 'TrE';
+  // displayed Little House bonuses, custom (progress / conditional) ones included, share one total: putting Stack of
+  // Books (+1,472% Special Attack Damage, progress-based) up beside Wall Shelves gave ×1.35, not ×15.7 (Nov 18)
+  if (cat === 'equip') return 'TrE';
   if (cat === 'kc') return 'K';
   if (cat === 'ast') return 'AS';
   return null;
@@ -759,11 +759,11 @@ const STAT_CHAIN = {
   // putting Weeding Art on display in place of Wall Shelves took it from 1.20b% to 28.5a% (÷42 = 1 + Wall Shelves'
   // 41), Nov 17. Likely the live data made these 'custom' bonuses (like Lively Lights), which multiply on their own.
   UniqueSkillDamageRate: '+C +F +S xTr xK xCB',
-  BossDamageRate: '+C +F +S +Tr xK xCB',
+  BossDamageRate: '+C +F +S xTr xK xCB',  // the code adds Little House here too, but the game multiplies it (Lively Lights ×8.5, Oct 31)
   MobDamageRate: '+C xK',
   Health: 'xA xC xF xT xST xS xCB xTr xK +CBa',  // Blessing (the hidden +20% HP) is applied in CALC_STATS
 };
-for (const k in STAT_CHAIN) STAT_CHAIN[k] = (STAT_CHAIN[k] + ' xTrI').split(' ').map(t => [t[0], t.slice(1)]);
+for (const k in STAT_CHAIN) STAT_CHAIN[k] = STAT_CHAIN[k].split(' ').map(t => [t[0], t.slice(1)]);
 // value = alpha × base + beta for a stat's chain, given the buckets
 function statChain(stat, agg) {
   const b = (agg.buckets && agg.buckets[stat]) || {}, g = id => b[id] || { sum: 0, prod: 1 };
