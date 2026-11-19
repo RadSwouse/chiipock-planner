@@ -439,7 +439,53 @@ function blankState() {
     gear: { weapon: 0, tool: 0 }, progress: { weeding: 0, kitchen: 0 },
     gacha: { wt: { lv: 1, prog: 0 }, as: { lv: 1, prog: 0 }, gems: 0 },  // gacha levels (draws so far into the level) and gems on hand
     weapons: {}, tools: {}, weaponEq: 0, toolEq: 0,  // weapons & tools you own (id → level 1–100) and the equipped ones
+    levels: {},  // battle-screen upgrade levels: atk, adv (Super ATK), hp, heal, cr, cd, mob
+    snacks: { dango: false, honeycomb: false, creampuff: false },
   };
+}
+
+/* ---- stats the planner calculates itself, with the game's formulas (BaseStatusCalculator: base value, then the chain)
+   Matched the Stats screen to its last digit on Nov 18. Rate stats start from 1; Critical Rate from 0.1% a level,
+   Critical Damage from 120% + 1% a level. */
+const CALC_STATS = {
+  cr: { stat: 'CriticalRate', base: st => st.levels && st.levels.cr > 0 ? 0.001 * st.levels.cr : null },
+  cd: { stat: 'CriticalDamage', base: st => st.levels && st.levels.cd > 0 ? 1.2 + 0.01 * st.levels.cd : null },
+  nr: { stat: 'NormalAttackDamageRate', base: () => 1 },
+  sr: { stat: 'SkillDamageRate', base: () => 1 },
+  ur: { stat: 'UniqueSkillDamageRate', base: () => 1 },
+  boss: { stat: 'BossDamageRate', base: () => 1 },
+  mob: { stat: 'MobDamageRate', base: st => st.levels && st.levels.mob > 0 ? 1 + 0.1 * st.levels.mob : null },
+  // ATK: ATK Lv × 10 × Super ATK (1 + 0.1 a level), then the chain; the snack pool multiplies on top (Blessing element)
+  atk: { stat: 'Attack', base: st => st.levels && st.levels.atk > 0 ? st.levels.atk * 10 * (1 + 0.1 * (+st.levels.adv || 0)) : null,
+    after: st => blessingPool(st), unit: 1 },
+  hp: { stat: 'Health', base: st => st.levels && st.levels.hp > 0 ? 100 + 10 * st.levels.hp : null, after: () => 1.2, unit: 1 },
+};
+// the Blessing (snack) pool for ATK: 1 + a hidden +100% + Honeycomb Candy's +500% (35n → 122n with it, ×3.49)
+const blessingPool = st => st.snacks && st.snacks.honeycomb ? SNACK.honeycombPool[1] : SNACK.honeycombPool[0];
+function calcStat(st, agg, k) {
+  const d = CALC_STATS[k]; if (!d) return null;
+  const B = d.base(st); if (B == null) return null;
+  const c = statChain(d.stat, agg); return (c.alpha * B + c.beta) * (d.after ? d.after(st) : 1);
+}
+const calcScale = k => (CALC_STATS[k] && CALC_STATS[k].unit) || 100;  // rates are shown in %
+/* Total Power from scratch (HuntDataStore.UpdateTotalPower): 500 × ATK × Crit Rate × Crit Damage × VS Boss × Non-Boss ×
+   Σ team outfits outfit-ATK × (Normal Attack Damage + Special Attack & Assist × Special Attack × coefficient ÷ recast s)
+   + 0.6 × HP. Matched 250w to the digit on Nov 18. */
+function calcTotalPower(st, agg, ctx) {
+  const v = k => calcStat(st, agg, k), atk = v('atk'), cr = v('cr'), cd = v('cd'), mob = v('mob');
+  if ([atk, cr, cd, mob].some(x => x == null)) return null;
+  const w = bannerCharW(st, agg, ctx), wN = bannerCharW(st, agg, ctx, true);
+  const hp = v('hp') || 0;
+  return 100 * atk * Math.min(1, cr) * cd * v('boss') * mob * (w * v('sr') * v('ur') + BANNER_NK * wN * v('nr')) + 0.6 * hp;
+}
+// Cream Puff (Blessing 3, at its top level) cuts special and assist cooldowns 45%; Honeycomb Candy (Blessing 2) adds
+// ATK +500% to the Blessing pool, which also holds a hidden +100% (pool ×2 → ×7, Nov 17)
+const SNACK = { creampuff: 45, honeycombPool: [2, 7] };
+function syncCalcStats(st, agg) {
+  st.statsAuto = st.statsAuto || {};
+  for (const k of Object.keys(CALC_STATS)) { const v = calcStat(st, agg, k); if (v != null && isFinite(v)) { st.stats[k] = v * calcScale(k); delete st.statsAuto[k]; } }
+  const tp = calcTotalPower(st, agg, context(st)); if (tp != null && isFinite(tp)) { st.stats.banner = tp; delete st.statsAuto.banner; }
+  st.stats.cdr = st.snacks && st.snacks.creampuff ? SNACK.creampuff : 0; delete st.statsAuto.cdr;
 }
 
 /* ---------------- formation context ---------------- */
@@ -714,6 +760,7 @@ const STAT_CHAIN = {
   UniqueSkillDamageRate: '+C +F +S xTr xK xCB',
   BossDamageRate: '+C +F +S +Tr xK xCB',
   MobDamageRate: '+C xK',
+  Health: 'xA xC xF xT xST xS xCB xTr xK +CBa',  // Blessing (the hidden +20% HP) is applied in CALC_STATS
 };
 for (const k in STAT_CHAIN) STAT_CHAIN[k] = (STAT_CHAIN[k] + ' xTrI').split(' ').map(t => [t[0], t.slice(1)]);
 // value = alpha × base + beta for a stat's chain, given the buckets
@@ -756,6 +803,8 @@ function effectiveStats(st, agg, base) {
   if (USE_CHAIN) { const a0 = statChain('Attack', base), a1 = statChain('Attack', agg); S.atk = a1.alpha / a0.alpha; } else S.atk = ratio('Attack').mul;
   for (const [k, stat] of Object.entries(STAT_KEYS)) {
     const screen = (+st.stats[k] || 0) / 100;
+    const cv = CALC_STATS[k] ? calcStat(st, agg, k) : null;
+    if (cv != null && isFinite(cv)) { S[k] = cv; continue; }
     if (USE_CHAIN && STAT_CHAIN[stat] && screen > 0 && chainFits(stat, screen)) { S[k] = chained(stat, screen); continue; }
     const d = ratio(stat);
     const mode = stackMode(st, stat);
@@ -1099,6 +1148,7 @@ function evalBanner(st, S, agg, ctx, shown, base) {
 function makeBaseline(st) {
   const ctx = context(st);
   const agg = aggregate(buildEffects(st, ctx), ctx, st);
+  syncCalcStats(st, agg);
   return { st, ctx, agg, w0: bannerCharW(st, agg, ctx) };
 }
 function evaluate(st2, base, opts, effects) {
@@ -2209,6 +2259,8 @@ function normalize(s) {
   o.candy = Object.assign({ have: 20, days: 3, rate: 0 }, o.candy || {});
   o.gacha = { wt: Object.assign({ lv: 1, prog: 0 }, (o.gacha || {}).wt), as: Object.assign({ lv: 1, prog: 0 }, (o.gacha || {}).as), gems: +(o.gacha || {}).gems || 0 };
   o.statsAuto = o.statsAuto || {};
+  o.levels = Object.assign({}, o.levels || {});
+  o.snacks = Object.assign({ dango: false, honeycomb: false, creampuff: false }, o.snacks || {});
   o.weapons = o.weapons || {}; o.tools = o.tools || {}; o.weaponEq = +o.weaponEq || 0; o.toolEq = +o.toolEq || 0;
   o.fest = Object.assign({ rank: 1, boost: false }, o.fest || {});
   o.kcSlots = 1;
@@ -3484,6 +3536,7 @@ function onBoothEdit(e) {
 const STAT_FIELDS = [  // same order and names as the in-game Stats window
   ['banner', 'Total Power', '', 'The Total Power number on the battle screen. Optional: rankings then also show how much Total Power each upgrade adds'],
   ['atk', 'ATK', '', 'Optional, for checking: it isn\'t used in the rankings'],
+  ['hp', 'HP', '', 'Optional, for checking'],
   ['cr', 'Critical Rate', '%', ''],
   ['cd', 'Critical Damage', '%', 'Starts at 120%'],
   ['mob', 'Damage to Non-Bosses', '%', ''],
@@ -3494,16 +3547,36 @@ const STAT_FIELDS = [  // same order and names as the in-game Stats window
   ['boss', 'VS Boss Damage', '%', ''],
   ['candy', 'Small Candy Strength', '%', 'Used for how many small candies an outfit needs. Filled in from your Training (100% + its bonuses) until you type it'],
 ];
+const LEVEL_FIELDS = [['atk', 'ATK'], ['adv', 'Super ATK'], ['hp', 'HP'], ['heal', 'Healing'], ['cr', 'Critical Rate'], ['cd', 'Critical Damage'], ['mob', 'Damage to Non-Bosses']];
+const isCalcStat = k => k === 'cdr' || (k === 'banner' ? ['atk', 'cr', 'cd', 'mob'].every(isCalcStat) : !!(CALC_STATS[k] && CALC_STATS[k].base(st) != null));
 const STACK_STATS = ['CriticalDamage', 'CriticalRate', 'NormalAttackDamageRate', 'UniqueSkillDamageRate', 'SkillDamageRate', 'BossDamageRate', 'MobDamageRate', 'AssistSkillDamage'];
 function renderSettings() {
   const v = $('#view-set');
   v.innerHTML = `
     <section class="card stack" id="mixcard"></section>
     <section class="card stack">
-      <h2>Your status screen</h2>
-      <p class="muted small" style="margin:0">When you press ✓ Done or "I've equipped these", the planner moves these numbers by what it predicts the change did; type the game's number over any that differ. Copy these from the in-game status screen, written the way the game shows them (<span class="num">850</span>, <span class="num">4.2a</span>, <span class="num">264i</span> all work). Open Edit → Stats in the game and copy the numbers. They already include study, training, weapons and every other source, so the planner can tell which stat is furthest behind. On a new account they all read 100%, except Critical Rate (0.1%) and Critical Damage (120%).</p>
-      <div>${STAT_FIELDS.map(([k, label, unit, hint]) => `<div class="field"><label for="s-${k}">${label}${unit ? ' (' + unit + ')' : ''}${hint ? `<br><span class="hint">${hint}</span>` : ''}${st.statsAuto && st.statsAuto[k] ? '<br><span class="hint" style="color:var(--pink)">estimated after your upgrades: check it in game</span>' : ''}</label>
-        <input type="text" id="s-${k}" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" value="${esc(fmtTrunc(k === 'candy' ? candyStrength(st) * 100 : +st.stats[k] || 0))}"></div>`).join('')}</div>
+      <div class="row" style="justify-content:space-between"><h2>Your status screen</h2><button class="btn" id="recalc">Recalculate Stats</button></div>
+      <p class="muted small" style="margin:0">Green numbers are calculated from everything you've entered, with the game's own formulas, and update with every ✓ Done. To check them, type the numbers from the in-game Stats window over them (<span class="num">850</span>, <span class="num">4.2a</span>, <span class="num">264i</span> all work) and press <b>Recalculate Stats</b>: a stat that doesn't match means something in the planner is missing or out of date. Fill in the upgrade levels below to have ATK, Critical Rate, Critical Damage, Damage to Non-Bosses and Total Power calculated too; until then, type those from the game.</p>
+      <div>${STAT_FIELDS.map(([k, label, unit, hint]) => {
+        const calc = isCalcStat(k), rd = ui.read && ui.read[k], ck = ui.check && ui.check[k];
+        const note = rd != null ? '<span class="hint">Your game reading: press Recalculate Stats to check it</span>'
+          : ck ? (ck.ok ? '<span class="hint" style="color:var(--mint)">✓ Matches the game</span>'
+            : `<span class="hint" style="color:var(--pink)">✗ The game shows ${esc(fmtTrunc(ck.read))}, calculated ${esc(fmtTrunc(ck.calc))} (${ck.calc > ck.read ? '+' : ''}${((ck.calc / ck.read - 1) * 100).toFixed(1)}%): an input is missing or out of date</span>`)
+          : calc ? `<span class="hint" style="color:var(--mint)">${k === 'cdr' ? 'Set by the Cream Puff snack below' : 'Calculated with the game\'s formula. Type the game\'s number to check it'}</span>` : hint ? `<span class="hint">${hint}</span>` : '';
+        return `<div class="field"><label for="s-${k}">${label}${unit ? ' (' + unit + ')' : ''}${note ? '<br>' + note : ''}${!calc && st.statsAuto && st.statsAuto[k] ? '<br><span class="hint" style="color:var(--pink)">estimated after your upgrades: check it in game</span>' : ''}</label>
+        <input type="text" id="s-${k}" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done"${calc && rd == null ? ' style="color:var(--mint)"' : ''}${k === 'cdr' && calc ? ' readonly tabindex="-1"' : ''} value="${esc(fmtTrunc(rd != null ? rd : k === 'candy' ? candyStrength(st) * 100 : +st.stats[k] || 0))}"></div>`;
+      }).join('')}</div>
+    </section>
+    <section class="card stack">
+      <h2>Snacks</h2>
+      <p class="muted small" style="margin:0">Tick the snacks that are active right now. Honeycomb Candy moves your ATK and Total Power numbers with it.</p>
+      <div class="row">${[['dango', 'Dango', 'Coins Earned'], ['honeycomb', 'Honeycomb Candy', 'ATK +500%'], ['creampuff', 'Cream Puff', 'Cooldowns −45%']].map(([k, n, d]) =>
+        `<label class="chip" style="cursor:pointer" for="sn-${k}"><input type="checkbox" id="sn-${k}"${st.snacks[k] ? ' checked' : ''} style="width:14px;height:14px;margin-right:6px">${n} <span class="muted">· ${d}</span></label>`).join('')}</div>
+    </section>
+    <section class="card stack">
+      <h2>Upgrade levels</h2>
+      <p class="muted small" style="margin:0">The levels of the upgrades on the battle screen. With ATK, Super ATK, Critical Rate, Critical Damage and Damage to Non-Bosses filled in, the planner calculates those stats and Total Power itself, the way the game does.</p>
+      <div>${LEVEL_FIELDS.map(([k, label]) => `<div class="field"><label for="lv-${k}">${label}</label><input type="number" id="lv-${k}" min="0" value="${st.levels[k] || ''}" placeholder="Lv"></div>`).join('')}</div>
     </section>
     <section class="card stack">
       <h2>Rank upgrades by</h2>
@@ -3531,11 +3604,41 @@ function renderSettings() {
       <p class="small muted" style="margin:0">Game data from the Chiikawa Pocket datamine (Global client, data through Sept 2026).</p>
     </section>`;
   renderMix();
-  v.querySelectorAll('input[id^=s-]').forEach(inp => inp.onchange = () => {
+  v.querySelectorAll('input[id^=lv-]').forEach(inp => inp.onchange = () => {
+    const k = inp.id.slice(3), n = clampInt(inp.value, 0, 1e9);
+    if (n > 0) st.levels[k] = n; else delete st.levels[k];
+    changed('quiet'); renderSettings(); toast('Saved');
+  });
+  v.querySelectorAll('input[id^=sn-]').forEach(inp => inp.onchange = () => {
+    const k = inp.id.slice(3); st.snacks[k] = inp.checked;
+    if (k === 'honeycomb') {  // the Blessing pool goes ×2 ↔ ×7: ATK and Total Power move with it
+      const f = inp.checked ? SNACK.honeycombPool[1] / SNACK.honeycombPool[0] : SNACK.honeycombPool[0] / SNACK.honeycombPool[1];
+      for (const s2 of ['atk', 'banner']) if (+st.stats[s2] > 0 && !isCalcStat(s2)) st.stats[s2] *= f;
+    }
+    changed('quiet'); renderSettings(); toast('Saved');
+  });
+  // Recalculate Stats: rerun every calculated stat from your inputs, and check any game readings typed over them
+  $('#recalc').onclick = () => {
+    recompute();
+    const read = ui.read || {}, check = {}; let bad = 0, n = 0;
+    for (const k of Object.keys(read)) {
+      if (!isCalcStat(k)) continue;
+      const calc = +st.stats[k] || 0, ok = fmtTrunc(calc) === fmtTrunc(read[k]);
+      check[k] = { calc, read: read[k], ok }; n++; if (!ok) bad++;
+    }
+    ui.read = {}; ui.check = check;
+    renderSettings(); renderRanking();
+    toast(!n ? 'Stats recalculated' : bad ? `${bad} of ${n} stats differ from the game` : `All ${n} stats match the game`);
+  };
+  v.querySelectorAll('input[id^=s-]').forEach(inp => { if (inp.readOnly) return; inp.onchange = () => {
     const k = inp.id.slice(2); const n = parseNum(inp.value);
     if (!isFinite(n) || n < 0) { inp.value = fmtNum(+st.stats[k] || 0); toast('Use a number like 850 or 4.2a'); return; }
+    if (isCalcStat(k)) {  // a calculated stat: keep it as a reading to check, not as the value
+      ui.read = ui.read || {}; ui.read[k] = n; if (ui.check) delete ui.check[k];
+      renderSettings(); toast('Press Recalculate Stats to check it'); return;
+    }
     st.stats[k] = n; inp.value = fmtTrunc(n); if (st.statsAuto) delete st.statsAuto[k]; changed('quiet'); toast('Saved');
-  });
+  }; });
   v.querySelectorAll('input[name=mode]').forEach(r => r.onchange = () => { st.mode = r.value; changed('quiet'); });
   v.querySelectorAll('input[name=rankby]').forEach(r => r.onchange = () => { st.rankBy = r.value; changed('quiet'); toast(r.value === 'battle' ? 'Ranking by the fight estimate' : 'Ranking by Total Power'); });
   $('#aoe').onchange = e => { st.aoe = clampInt(e.target.value, 1, 10); changed('quiet'); };
