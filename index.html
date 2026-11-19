@@ -139,6 +139,7 @@ details.inv[open] > summary::after { content: "－"; }
 .ctl { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .ctl label { font-size: .75rem; color: var(--muted); display: flex; align-items: center; gap: 4px; }
 input[type=number] { width: 4.6em; padding: 5px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); text-align: right; }
+input[type=number].lvl { width: 100%; }
 input[type=text] { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); width: 100%; }
 select { padding: 5px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); max-width: 100%; }
 input[type=checkbox], input[type=radio] { accent-color: var(--pink); width: 18px; height: 18px; }
@@ -3547,7 +3548,7 @@ const STAT_FIELDS = [  // same order and names as the in-game Stats window
   ['boss', 'VS Boss Damage', '%', ''],
   ['candy', 'Small Candy Strength', '%', 'Used for how many small candies an outfit needs. Filled in from your Training (100% + its bonuses) until you type it'],
 ];
-const LEVEL_FIELDS = [['atk', 'ATK'], ['adv', 'Super ATK'], ['hp', 'HP'], ['heal', 'Healing'], ['cr', 'Critical Rate'], ['cd', 'Critical Damage'], ['mob', 'Damage to Non-Bosses']];
+const LEVEL_FIELDS = [['atk', 'ATK'], ['hp', 'HP'], ['heal', 'Healing'], ['cd', 'Critical Damage'], ['adv', 'Super ATK'], ['cr', 'Critical Rate'], ['mob', 'Damage to Non-Bosses']];  // the game's order
 const isCalcStat = k => k === 'cdr' || (k === 'banner' ? ['atk', 'cr', 'cd', 'mob'].every(isCalcStat) : !!(CALC_STATS[k] && CALC_STATS[k].base(st) != null));
 const STACK_STATS = ['CriticalDamage', 'CriticalRate', 'NormalAttackDamageRate', 'UniqueSkillDamageRate', 'SkillDamageRate', 'BossDamageRate', 'MobDamageRate', 'AssistSkillDamage'];
 function renderSettings() {
@@ -3576,7 +3577,7 @@ function renderSettings() {
     <section class="card stack">
       <h2>Upgrade levels</h2>
       <p class="muted small" style="margin:0">The levels of the upgrades on the battle screen. With ATK, Super ATK, Critical Rate, Critical Damage and Damage to Non-Bosses filled in, the planner calculates those stats and Total Power itself, the way the game does.</p>
-      <div>${LEVEL_FIELDS.map(([k, label]) => `<div class="field"><label for="lv-${k}">${label}</label><input type="number" id="lv-${k}" min="0" value="${st.levels[k] || ''}" placeholder="Lv"></div>`).join('')}</div>
+      <div>${LEVEL_FIELDS.map(([k, label]) => `<div class="field"><label for="lv-${k}">${label}</label><input type="number" class="lvl" id="lv-${k}" min="0" value="${st.levels[k] || ''}" placeholder="Lv"></div>`).join('')}</div>
     </section>
     <section class="card stack">
       <h2>Rank upgrades by</h2>
