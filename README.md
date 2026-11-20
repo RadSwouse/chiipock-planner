@@ -4,7 +4,7 @@ An unofficial, fan-made planner for Chiikawa Pocket. It ranks your upgrades (out
 training, study, gacha and more) by how much damage each adds, using numbers from the game's data and checked against
 in-game results.
 
-**Open it:** https://YOUR-USERNAME.github.io/YOUR-REPO/
+**Open it:** https://radswouse.github.io/chiipock-planner/
 
 - Works in any browser on iPhone, iPad, Android or a computer. Nothing to install and no account needed.
 - Your data is saved in the browser you use. To move it to another device, use **Stats → Your data → Copy backup**,
