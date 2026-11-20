@@ -1428,6 +1428,7 @@ function treasureCandidates(st, base, bt) {
 /* Handbook entry level. Dishes / Assists entries sit at the lowest level among their items
    (the game shows "Lv 1/2" on each item), capped at 100; all items must be owned. */
 function guideLevel(g, st) {
+  if (st.guideFix && st.guideFix[g.id] != null) return st.guideFix[g.id];  // held fixed (gacha: item vs Handbook value)
   if ((g.kind === 'Weapon' || g.kind === 'Armor') && Object.keys(gearInv(st, g.kind === 'Weapon' ? 'weapon' : 'tool')).length) {
     // worked out from Weapons & Tools once you've entered any: every item in the set at a level → the entry's level
     let m = Infinity; const kind = g.kind === 'Weapon' ? 'weapon' : 'tool';
@@ -2254,21 +2255,41 @@ function gachaGains(st, base) {
   const cur = evaluate(st, base).total, g = {};
   if (!(cur > 0)) return g;
   const rel = st2 => evaluate(st2, base).total / cur - 1, C = D.gearCopies;
+  const per = lv => lv ? C[lv - 1] : 1;  // copies for the next level (a new one is 1 copy)
+  // Handbook weapon/tool/assist sets level with their items (entry level = the lowest item's level). Each copy is
+  // scored for the item itself with those entries held where they are, plus its share of the entry's next level:
+  // the entry goes up once every item sitting at the lowest level gets there, so a copy of one of those items is
+  // worth (next entry level) ÷ (copies all of them still need). That counts sets where several items are tied at the
+  // bottom, or several are still missing, which a single item's level-up alone never moves.
+  const auto = D.guidebook.filter(e => e.kind === 'AssistSkill' ||
+    ((e.kind === 'Weapon' || e.kind === 'Armor') && Object.keys(gearInv(st, e.kind === 'Weapon' ? 'weapon' : 'tool')).length));
+  const fix = {}; for (const e of auto) fix[e.id] = guideLevel(e, st);
+  const fr = withChange(st, x => { x.guideFix = fix; });
   for (const it of D.gear) {
     const lv = gearLv(st, it.kind, it.id); if (lv >= 100) continue;
     const key = it.kind === 'weapon' ? 'weapons' : 'tools', eqKey = it.kind === 'weapon' ? 'weaponEq' : 'toolEq';
     const up = x => { x[key] = Object.assign({}, x[key], { [it.id]: lv + 1 }); };
-    let d = rel(withChange(st, up));
+    let d = rel(withChange(fr, up));
     const eq = gearEq(st, it.kind);  // would it be better equipped than what is?
-    if (!eq || it.star >= eq.star) d = Math.max(d, rel(withChange(st, x => { up(x); x[eqKey] = it.id; })));
-    g[it.kind + ':' + it.id] = Math.max(0, d) / (lv ? C[lv - 1] : 1);
+    if (!eq || it.star >= eq.star) d = Math.max(d, rel(withChange(fr, x => { up(x); x[eqKey] = it.id; })));
+    g[it.kind + ':' + it.id] = Math.max(0, d) / per(lv);
   }
-  for (const it of D.gear.slice().sort((a, b) => b.id - a.id)) if (gearLv(st, it.kind, it.id) >= 100) g[it.kind + ':' + it.id] = (g[it.kind + ':' + (it.id + 1)] || 0) / 5;
   for (const a of D.assists) {
     const lv = (st.assists[a.id] && +st.assists[a.id].lv) || 0; if (lv >= 100) continue;
-    const d = rel(withChange(st, x => { x.assists[a.id] = { lv: lv + 1 }; }));
-    g['assist:' + a.id] = Math.max(0, d) / (lv ? C[lv - 1] : 1);
+    const d = rel(withChange(fr, x => { x.assists[a.id] = { lv: lv + 1 }; }));
+    g['assist:' + a.id] = Math.max(0, d) / per(lv);
   }
+  for (const e of auto) {
+    const L = fix[e.id]; if (L >= e.cap) continue;
+    const kind = e.kind === 'AssistSkill' ? 'assist' : e.kind === 'Weapon' ? 'weapon' : 'tool';
+    const lvOf = t => kind === 'assist' ? ((st.assists[t] && +st.assists[t].lv) || 0) : gearLv(st, kind, t);
+    const low = Math.min(...e.targets.map(lvOf)), mins = e.targets.filter(t => lvOf(t) === low);
+    const need = mins.reduce((a, t) => a + per(lvOf(t)), 0);
+    const dE = rel(withChange(fr, x => { x.guideFix = Object.assign({}, fix, { [e.id]: L + 1 }); }));
+    if (dE > 0 && need > 0) for (const t of mins) g[kind + ':' + t] = (g[kind + ':' + t] || 0) + dE / need;
+  }
+  // a maxed item's copies become 1/5 of a copy of the next one up
+  for (const it of D.gear.slice().sort((a, b) => b.id - a.id)) if (gearLv(st, it.kind, it.id) >= 100) g[it.kind + ':' + it.id] = (g[it.kind + ':' + (it.id + 1)] || 0) / 5;
   for (const a of D.assists.slice().sort((a, b) => b.id - a.id)) if (((st.assists[a.id] || {}).lv || 0) >= 100) g['assist:' + a.id] = (g['assist:' + (a.id + 1)] || 0) / 5;
   for (const id in st.keychains) {
     const s = st.keychains[id], s0 = +s.star || 0; if (!s.eq || s0 < 1 || !KEYCHAIN[id]) continue;
@@ -2486,7 +2507,7 @@ const CAT_INTRO = {
   kc: 'Keychain equip bonuses increase the character\'s ATK. Star bonuses only count while the keychain\'s assist is equipped. 1 bead = 100 EXP, and leftover EXP carries into the next level.',
   gear: 'Weapons and tools only level up from gacha copies (Lv 1–100). Every one you own gives its bonus effect, and the one weapon and one tool you equip also give their equip bonus (a tool\'s is HP). Enter what you own and its level; Handbook weapon & tool sets are then worked out for you.',
   shop: 'Which outfit to trade 10 outfit tickets for. Every outfit you don\'t own yet from the sets in the shop is scored by the damage it adds once maxed (Lv 200, promotion 5): its level bonuses and promotion count for the whole account wherever it sits, plus anything it adds by joining the team. The extra cooking coins it makes in your booths count as the food levels they buy.',
-  gacha: 'Where your gems add the most damage. Each pull is scored by every prize it can give: its chance per draw times what one more copy adds (a new item, a share of its next level, or a keychain merge). Weapons & Tools and Assists odds get better as their gacha levels up; Keychain odds never change. Everything uses what you\'ve entered in the other tabs.',
+  gacha: 'Where your gems add the most damage. Each pull is scored by every prize it can give: its chance per draw times what one more copy adds (a new item, a share of its next level, or a keychain merge), plus its share of the next level of any Handbook set it belongs to. Weapons & Tools and Assists odds get better as their gacha levels up; Keychain odds never change. Everything uses what you\'ve entered in the other tabs.',
   house: 'There are 5 shelves, and you display one item from each. The display bonuses of all 5 shelves (and your keychains\' equip bonuses) add up per stat into one multiplier, so an item that\'s the only one giving its stat counts in full: +1,600% ATK on its own is ×17. Every item you own also keeps its owned bonus when it isn\'t displayed. Past level 100, raising an item\'s cap takes little-house big candies.',
   guide: 'Dishes entries level up with your foods: each level needs every dish in the set at that level, so the ranking shows which foods to raise. Home events level up from seeing one scene enough times, and sets and memories unlock once. Weapons, tools and assists come from the gacha, so they\'re shown but not ranked.',
   home: 'Every home item adds ATK per level. Ranking is based on max level Handbook bonus. Recommended layouts are based on home items that still have handbook levels.',
