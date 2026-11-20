@@ -2507,14 +2507,14 @@ function sectionHome() {
           <span class="muted">${r.t.rem} view${r.t.rem === 1 ? '' : 's'} to max</span></div>
         <div class="small" style="text-align:right"><b>${Math.round(r.p * 100)}%</b> per refresh<br><span class="muted">≈ ${fmtNum(r.refreshes)} refreshes</span></div></div>`).join('')}</div></div>`).join('');
   const wait = L.unplaced.length ? `<p class="small" style="margin:0">Place once the others are done: ${L.unplaced.map(t => `${esc(t.h.name)} Sc. ${t.scene}`).join(', ')}.</p>` : '';
-  const locked = L.locked.length ? `<p class="muted small" style="margin:0">Level up to open more Handbook scenes: ${L.locked.map(x => `${esc(x.h.name)} (Lv ${x.need})`).join(', ')}.</p>` : '';
-  f.innerHTML = `<section class="card stack">
+  // nothing to place in either background → no card at all
+  f.style.display = body ? '' : 'none';
+  f.innerHTML = body ? `<section class="card stack">
       <div class="row" style="justify-content:space-between"><h2>Recommended layouts</h2><span class="muted small">Handbook scenes</span></div>
-      ${body || '<div class="empty">Every Handbook scene you can see is at its max level.</div>'}
-      ${wait}${locked}
-      ${body ? '<p class="muted small" style="margin:0">Leave the other spots empty: extra items take these characters first or push them down the ranking.</p>' : ''}
-      <p class="muted small" style="margin:0">Only the background you're viewing rolls scenes, once every 5 minutes when you open home. Views left come from the levels entered under Handbook.</p>
-    </section>`;
+      ${body}${wait}
+      <p class="muted small" style="margin:0">Leave the other spots empty: extra items take these characters first or push them down the ranking.</p>
+      <p class="muted small" style="margin:0">Scenes refresh every 5 minutes when you open Home. Views left come from the levels entered under Handbook.</p>
+    </section>` : '';
 }
 
 function renderUpgrades() {
@@ -2533,10 +2533,12 @@ function renderUpgrades() {
     renderRanking(); renderEditor();
     return;
   }
+  const feat = FEATURES[ui.cat] ? '<div id="feature" class="stack"></div>' : '';
   v.innerHTML = `
-    ${FEATURES[ui.cat] ? '<div id="feature" class="stack"></div>' : ''}
+    ${ui.cat === 'home' ? '' : feat}
     <p class="muted small" style="margin:0">${esc(CAT_INTRO[ui.cat])}</p>
     ${ui.cat === 'assist' || ui.cat === 'gear' || ui.cat === 'gacha' || ui.cat === 'shop' ? '' : '<div class="stack" id="rank"></div>'}
+    ${ui.cat === 'home' ? feat : ''}
     <div id="inv-wrap"></div>`;
   if (FEATURES[ui.cat]) FEATURES[ui.cat]();
   renderRanking();
@@ -2608,15 +2610,29 @@ function renderRanking() {
   if (ui.cat === 'food') renderCandyPlan();
   const box = $('#rank'); if (!box) return;
   const all = candidates(ui.cat, st, base);
-  if (!all.length) {
+  // Handbook: a group whose entries are all at max level shows as one green line instead of disappearing
+  const doneGroups = {};
+  if (ui.cat === 'guide') {
+    const kinds = { cook: 'Cooking', views: 'HomeEvent' };
+    for (const g in kinds) {
+      const es = D.guidebook.filter(e => e.kind === kinds[g]);
+      if (es.length && es.every(e => guideLevel(e, st) >= e.cap)) doneGroups[g] = true;
+    }
+  }
+  if (!all.length && !Object.keys(doneGroups).length) {
     box.innerHTML = `<div class="empty">Nothing to rank yet. Add what you own under <b>Your ${catNoun()}</b> below.</div>`;
     return;
   }
   const groups = {};
   for (const c of all) (groups[resKey(c)] = groups[resKey(c)] || []).push(c);
-  const order = (GROUP_ORDER[ui.cat] || []).concat(Object.keys(groups)).filter((k, i, a) => a.indexOf(k) === i && groups[k]);
+  const order = (GROUP_ORDER[ui.cat] || []).concat(Object.keys(groups)).filter((k, i, a) => a.indexOf(k) === i && (groups[k] || doneGroups[k]));
   let html = '';
   for (const g of order) {
+    if (!groups[g]) {
+      html += `<section class="stack" style="gap:8px"><div class="group-h"><h3>${esc((GROUPS[g] || [g])[0])}</h3>
+        <span style="color:var(--mint);font-weight:600">All entries max level!</span></div></section>`;
+      continue;
+    }
     let list = groups[g];
     const dead = list.filter(c => !(c.gain > 1e-9));
     list = list.filter(c => c.gain > 1e-9);
