@@ -2899,7 +2899,7 @@ function sectionGacha() {
     }).join('');
     $('#feature').innerHTML = `<section class="card stack"><div class="row" style="justify-content:space-between"><h2>Where gems do the most</h2><span class="muted small">expected damage</span></div>
         ${rows}
-        ${order[0] === 'kc' ? '<p class="small" style="margin:0;color:var(--pink)">Keychain pulls are scored as progress toward star-ups of your equipped keychains: each copy counts for its share of the merge it feeds. The damage only arrives when a merge completes, so it comes in big jumps, not a little per pull. The 5★ star bonuses haven\'t been checked against the game yet.</p>' : ''}
+        ${order[0] === 'kc' ? '<p class="small" style="margin:0;color:var(--pink)">Keychain pulls are scored as progress toward star-ups of your equipped keychains: each copy counts for its share of the merge it feeds. The damage only arrives when a merge completes, so it comes in big jumps, not a little per pull.</p>' : ''}
         <p class="muted small" style="margin:0">Only prizes that add damage as things stand are counted: a keychain you don\'t have equipped, or a new assist that would need a team slot, counts as nothing.</p></section>
       ${planHtml}
       <section class="card stack"><h2>Gacha levels</h2><div class="items">${lvCard}</div>
