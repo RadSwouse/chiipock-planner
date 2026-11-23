@@ -13,3 +13,16 @@ in-game results.
   offline, and Safari won't clear its saved data.
 
 Not affiliated with the game or its makers.
+
+## When a new outfit set comes out
+
+The boss-fight model needs each new outfit's **hit time**: the seconds from its special starting to its damage (and any
+buff or debuff) landing. Known hit times are in `HIT_S` in `index.html`; an outfit without one uses the average of that
+character's other outfits until it's added. The easiest sources, best first:
+
+1. The game's downloaded asset files from a phone that has the new set (the same kind of files as the OctoPreinstallation
+   zips), which give exact times.
+2. A screen recording of a boss fight with the new outfit in slot 1, recorded at 60 fps, from the moment the fight starts.
+   The time from its special's animation starting to its damage number appearing is the hit time.
+
+New outfits also need their skill numbers (multiplier, cooldown, effects) from the game's masterdata.
