@@ -26,3 +26,8 @@ character's other outfits until it's added. The easiest sources, best first:
    The time from its special's animation starting to its damage number appearing is the hit time.
 
 New outfits also need their skill numbers (multiplier, cooldown, effects) from the game's masterdata.
+
+### Waiting on
+
+- **Winter Holiday 2026 (out 12/1/26):** a screen recording of a boss fight with the new free Kurimanju outfit in slot 1
+  for its hit time, plus the set's skill numbers and the new Holiday Tree home item.
