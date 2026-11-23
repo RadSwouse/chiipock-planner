@@ -3388,7 +3388,7 @@ function sectionKeychains() {
   const fightNow = summary(st, base).total;
   const jGain = !J.error && fightNow > 0 ? J.total / fightNow - 1 : 0;
   const aChanged = !J.error && J.assists.slice().sort().join() !== nowA.slice().sort().join();
-  const jKcDiff = [1, 2, 3, 4, 5, 6, 7].filter(c => jPick[c] && jPick[c] !== byChar[c]);
+  const jKcDiff = J.error ? [] : Object.keys(J.kcChange).map(Number);  // team characters whose keychain differs from what they wear now
   const showJ = aChanged && jKcDiff.length && jGain > 0.001;
   const addA = showJ ? J.assists.filter(id => !nowA.includes(id)) : [], dropA = showJ ? nowA.filter(id => !J.assists.includes(id)) : [];
   f.innerHTML = `${showJ ? `<section class="card stack" style="border-color:var(--mint)">
@@ -3412,7 +3412,7 @@ function sectionKeychains() {
   if (btn) btn.onclick = () => { const m = applyAndPredict(x => { for (const id in x.keychains) x.keychains[id].eq = !!eq[id]; }); changed('quiet'); sectionKeychains(); renderEditor(); toast('Keychains updated' + statNote(m)); };
   const bj = $('#use-joint');
   if (bj) bj.onclick = () => {
-    const m = applyAndPredict(x => { x.assistTeam = J.assists.slice(); for (const id in x.keychains) x.keychains[id].eq = jPick[KEYCHAIN[id].char] == id; });
+    const m = applyAndPredict(x => { x.assistTeam = J.assists.slice(); for (const id in x.keychains) { const c = KEYCHAIN[id] && KEYCHAIN[id].char; if (c && J.kcChange[c]) x.keychains[id].eq = J.kcChange[c] == id; } });
     changed('quiet'); sectionKeychains(); renderEditor(); toast('Assists and keychains updated' + statNote(m));
   };
 }
