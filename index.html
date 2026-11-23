@@ -254,6 +254,173 @@ details.mem > div { padding: 4px 0 2px 14px; line-height: 1.4; }
 }
 @media (prefers-reduced-motion: no-preference) { .bar b { transition: width .25s ease; } }
 </style>
+<style id="game-theme">
+/* ===== Game-colour theme (cosmetic only) =====
+   Colours from the game's own interface palette: cream pages, brown outlines, yellow tabs, green title ribbons and
+   buttons, pink gains, thumbnail-frame rarity colours. Character colours: weapon colour for Chiikawa, Hachiware and
+   Usagi; Kurimanju's tan, Momonga's tail, Rakko's cream and Shisa's mane (Normal outfits). Keychain rows use the
+   colour of each character's keychain outline. */
+:root {
+  --paper: #FFF8ED; --card: #FFFEFD; --ink: #5E3F3C; --muted: #8E6461; --line: #E8D2B0; --chip: #FBF1E1;
+  --pink: #D9566A; --pink-soft: #FDE6E8; --mint: #3F8A3B; --mint-soft: #EAF5DF; --sun: #B8770A; --sun-soft: #FBEEDB;
+  --shadow: 0 4px 0 #E8D2B0;
+  --tile: #FFF8ED; --tile-line: #D4BB94; --tile-ink: #8E6461; --board: #FBF1E1; --board-line: #E8D2B0; --tape: rgba(212, 187, 148, .6);
+  --max: #F792A5; --max-ink: #FFFFFF; --tag: #FF9536; --path: #C3A595;
+  --outline: #8E6461; --dots: #F9E6CA; --gain: #D9566A;
+  --tab-a: #F2D441; --tab-b: #F7B762; --tab-edge: #ECA541;
+  --rib-a: #86C87D; --rib-b: #CED983; --btn-a: #B1E0B0; --btn-b: #70C36E; --btn-edge: #5DB265; --btn-ink: #3E3A22;
+  --r4: #EDCCFF; --r5: #FFD191; --r6: #FEFF86;
+  --f-body: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Arial Rounded MT Bold", system-ui, sans-serif;
+  --f-num: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #2A211F; --card: #352A27; --ink: #F6E9DA; --muted: #CDB3A6; --line: #5A4741; --chip: #43352F;
+  --pink: #FF8FA0; --pink-soft: #4A2E31; --mint: #9AD58F; --mint-soft: #2E3D2A; --sun: #F2C25C; --sun-soft: #46382A;
+  --shadow: 0 4px 0 #1E1715; --outline: #C9A89A; --dots: #33282A; --gain: #FF8FA0;
+  --tile: #352A27; --tile-line: #7A6155; --tile-ink: #F0DCCB; --board: #2F2522; --board-line: #5A4741; --path: #8C7468;
+  --btn-ink: #22200F;
+} }
+:root[data-theme="dark"] {
+  --paper: #2A211F; --card: #352A27; --ink: #F6E9DA; --muted: #CDB3A6; --line: #5A4741; --chip: #43352F;
+  --pink: #FF8FA0; --pink-soft: #4A2E31; --mint: #9AD58F; --mint-soft: #2E3D2A; --sun: #F2C25C; --sun-soft: #46382A;
+  --shadow: 0 4px 0 #1E1715; --outline: #C9A89A; --dots: #33282A; --gain: #FF8FA0;
+  --tile: #352A27; --tile-line: #7A6155; --tile-ink: #F0DCCB; --board: #2F2522; --board-line: #5A4741; --path: #8C7468;
+  --btn-ink: #22200F;
+}
+[data-char="1"] { --c: #F5BDC4; --kc: #F8BBCF; } [data-char="2"] { --c: #78AEDD; --kc: #9BCCF4; }
+[data-char="3"] { --c: #F7CE7C; --kc: #FADF7C; } [data-char="4"] { --c: #FCE4C0; --kc: #BFDCA8; }
+[data-char="5"] { --c: #CCEAF8; --kc: #BFA6F0; } [data-char="6"] { --c: #FDF0D8; --kc: #D1C6BB; }
+[data-char="7"] { --c: #F19E70; --kc: #F6C5A3; }
+
+body { background-color: var(--paper); background-image: radial-gradient(var(--dots) 1.4px, transparent 1.6px); background-size: 18px 18px;
+  font-weight: 500; }
+h1, h2, h3 { color: var(--ink); }
+h1 { font-weight: 900; }
+h2 { font-weight: 900; }
+h3 { font-weight: 900; }
+h1 .dot { display: none; }
+b, strong { font-weight: 900; }
+a { color: var(--pink); }
+
+/* tabs */
+nav.tabs { background: transparent; padding-block: 8px 12px; }
+nav.tabs .chip { font-weight: 700; color: var(--muted); background: var(--card); border: 2.5px solid var(--line); box-shadow: 0 3px 0 var(--line); }
+nav.tabs .chip[aria-pressed=true] { background: linear-gradient(180deg, var(--tab-a), var(--tab-b)); color: #5E3F3C; border-color: var(--tab-edge);
+  box-shadow: 0 3px 0 rgba(93, 85, 44, .3); font-weight: 900; }
+nav.tabs { background: color-mix(in srgb, var(--paper) 92%, transparent); }
+.chip { border-radius: 999px; }
+.chip[aria-pressed=true] { background: var(--sun-soft); border-color: var(--tab-edge); color: var(--ink); font-weight: 900; }
+
+/* cards: brown outline, soft offset shadow, green title ribbon */
+.card { border: 2.5px solid var(--outline); border-radius: 20px; box-shadow: var(--shadow); }
+.card > h2:first-child, .card > .row:first-child > h2 { display: inline-block; align-self: flex-start; font-size: 1rem;
+  background: linear-gradient(90deg, var(--rib-a), var(--rib-b)); color: #5E3F3C; border: 2.5px solid var(--outline); border-radius: 999px; padding: 3px 16px; }
+.card > h2:first-child { align-self: center; margin-top: -30px; }
+.card { margin-top: 16px; }
+.banner { border: 2px solid var(--tab-edge); border-radius: 14px; font-weight: 700; }
+
+/* buttons */
+.btn { border: 2px solid var(--line); border-radius: 999px; padding: 7px 14px; font-weight: 700; box-shadow: 0 3px 0 var(--line); background: var(--card); color: var(--ink); }
+.btn.primary { background: linear-gradient(180deg, var(--btn-a), var(--btn-b)); border-color: var(--btn-edge); color: var(--btn-ink); font-weight: 900;
+  box-shadow: 0 3px 0 rgba(93, 85, 44, .3); }
+.btn.ghost { box-shadow: none; border-style: dashed; border-color: var(--tile-line); background: var(--card); }
+.mv { border: 2px solid var(--line); border-radius: 999px; background: var(--card); color: var(--ink); font-weight: 900; }
+
+/* ranked upgrades */
+.group-h { margin-top: 10px; }
+.group-h h3 { font-size: 1.05rem; }
+.up { border: 2px solid var(--outline); border-radius: 18px; box-shadow: var(--shadow); padding: 10px 12px; gap: 3px 10px; grid-template-columns: 34px 1fr auto; }
+.up.top { border-color: var(--outline); box-shadow: var(--shadow); }
+.up .pos { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--outline); background: var(--chip); color: var(--ink);
+  display: flex; align-items: center; justify-content: center; font-size: .95rem; }
+.up.top .pos { background: var(--mint-soft); color: var(--ink); }
+.up .name { font-weight: 900; }
+.up .act { color: var(--muted); font-weight: 700; }
+.up .gain { color: var(--gain); font-weight: 900; font-size: 1.2rem; }
+.up .gain.neg { color: var(--muted); }
+.bar { height: 6px; background: var(--chip); }
+.bar b { background: linear-gradient(90deg, var(--rib-a), var(--btn-b)); }
+.up .meta { color: var(--muted); font-weight: 500; }
+.up .meta .cost { background: var(--sun-soft); border: 1.5px solid var(--line); border-radius: 999px; padding: 0 8px; color: var(--ink); font-weight: 700; }
+.up .done { border: 2px solid var(--btn-edge); background: var(--mint-soft); color: var(--mint); border-radius: 999px; box-shadow: none; font-weight: 900; }
+.up .done:hover { background: #D0E7A2; }
+/* character colour: a stripe on outfit rows, the keychain outline colour as a band on keychain rows */
+.up[data-char] { box-shadow: inset 9px 0 0 var(--c), var(--shadow); padding-left: 18px; }
+.up[data-cat="kc"][data-char] { box-shadow: inset 0 0 0 5px var(--kc), var(--shadow); padding-left: 14px; }
+
+.pill { background: var(--chip); border: 1.5px solid var(--line); color: var(--ink); font-weight: 700; }
+/* star ratings 1-7: the game's rarity thumbnail colour inside, its rarity text colour as the outline
+   (food rarity r1/r2/r3 = 4/5/6 stars) */
+.pill.st1 { background: #D6D0CE; border-color: #AEA8A6; color: #5E3F3C; }
+.pill.st2 { background: #D2DED0; border-color: #8CAF6D; color: #5E3F3C; }
+.pill.st3 { background: #D1DEE3; border-color: #83AEBF; color: #5E3F3C; }
+.pill.st4, .pill.r1 { background: #EDCCFF; border-color: #E770EE; color: #5E3F3C; }
+.pill.st5, .pill.r2 { background: #FFD191; border-color: #F97C10; color: #5E3F3C; }
+.pill.st6, .pill.r3 { background: #FEFF86; border-color: #2BCF5E; color: #5E3F3C; }
+.pill.st7 { background: linear-gradient(90deg, #FFBEBE, #FFD4E6); border-color: #FF524B; color: #5E3F3C; }
+.slots-note { margin: 0; font-size: .74rem; color: var(--muted); }
+.empty { border: 2px dashed var(--line); border-radius: 16px; background: var(--card); }
+.result { background: var(--mint-soft); border: 2px solid #CFE3B7; border-radius: 14px; font-weight: 500; }
+
+/* editors */
+details.inv { border: 2px solid var(--outline); border-radius: 18px; box-shadow: var(--shadow); }
+details.inv > summary { font-weight: 900; }
+details.set { border: 2px solid var(--line); border-radius: 14px; }
+details.set > summary { font-weight: 700; }
+input[type=number], input[type=text], select, textarea { border: 2px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); }
+input[type=checkbox], input[type=radio] { accent-color: var(--btn-b); }
+.item { border-top: 1.5px dashed var(--line); }
+.sub-h { color: var(--muted); font-weight: 900; }
+.kc-ch { background: var(--chip); border: 1.5px dashed var(--line); }
+.kc-row .small { color: var(--sun); }
+.own-dot { background: var(--btn-b); }
+.toast { background: var(--ink); color: var(--paper); font-weight: 700; }
+
+/* team: six tiles, 1-2-3 on top and 4-5-6 below, like the game */
+.slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.slot { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 0 0 7px; border: 2px solid var(--outline);
+  border-radius: 14px; background: var(--card); overflow: hidden; text-align: center; }
+.slot:focus-within { outline: 3px solid var(--tab-edge); outline-offset: 2px; }
+.slot .ch { background: var(--c, var(--chip)); border-bottom: 2px solid var(--outline); color: #4A3230; font-family: var(--f-display); font-weight: 900;
+  font-size: .82rem; padding: 4px 4px 3px 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slot .i { position: absolute; top: 4px; left: 4px; width: 18px; height: 18px; border-radius: 50%; background: var(--outline); color: var(--card);
+  font-family: var(--f-display); font-size: .7rem; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+.slot .cn { font-size: .72rem; font-weight: 700; color: var(--muted); line-height: 1.25; min-height: 2.5em; padding: 0 4px;
+  display: flex; flex-direction: column; justify-content: center; }
+.slot .cn b { color: var(--ink); font-weight: 900; }
+/* the picker stays a real <select>; it covers the tile so tapping the tile opens it */
+.slot select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.slot .row { justify-content: center; position: relative; z-index: 1; }
+.slot .mv { width: 28px; height: 26px; font-size: .8rem; }
+.slot .fires { grid-column: auto; margin: 0; padding: 0 5px; font-size: .66rem; line-height: 1.3; color: var(--muted); position: relative; z-index: 1; pointer-events: none; }
+
+/* keychains to equip: each character's card wears its keychain outline colour */
+.items > .item[data-char] { border: 2px solid var(--outline); border-top-width: 2px; border-radius: 16px; box-shadow: inset 0 0 0 5px var(--kc);
+  padding: 10px 14px; margin-top: 8px; background: var(--card); }
+.items > .item[data-char]:first-child { margin-top: 0; }
+.items > .item[data-char] .kc-ch { background: var(--chip); }
+
+/* boards (Study, Training), Handbook, booths */
+.board { border: 2px solid var(--outline); border-radius: 18px; }
+.hb-card { border: 2px solid var(--line); border-radius: 16px; }
+.hb-card.done { border-color: var(--max); }
+.bslot { border: 1.5px solid var(--line); }
+
+/* a hidden view stays hidden (the Stats page no longer shows the previous tab's list above it) */
+[hidden] { display: none !important; }
+
+/* light/dark button, top right */
+header.top { position: relative; }
+header.top h1 { padding-right: 50px; }
+.mode-btn { position: absolute; top: 0; right: 0; width: 40px; height: 40px; padding: 0; border-radius: 50%; border: 2.5px solid var(--outline);
+  background: var(--card); color: var(--sun); font-size: 1.2rem; line-height: 1; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 3px 0 var(--line); }
+.mode-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--line); }
+
+/* picked chips (Trading Post sets): the Done buttons' green */
+.chip[aria-pressed=true] { background: var(--mint-soft); border: 2px solid var(--btn-edge); color: var(--ink); font-weight: 900; }
+.chip { border-width: 2px; }
+</style>
 
 <div class="wrap">
 <script>
@@ -274,6 +441,21 @@ details.mem > div { padding: 4px 0 2px 14px; line-height: 1.4; }
 </script>
   <header class="top">
     <h1><span class="dot" aria-hidden="true"></span> Chiikawa Pocket Upgrade Planner</h1>
+    <button class="mode-btn" id="mode-btn" type="button" aria-label="Switch to dark mode">☾︎</button>
+    <script>
+    (function () {
+      var b = document.getElementById('mode-btn'), r = document.documentElement, K = 'planner-mode';
+      var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+      function cur() { var t = r.getAttribute('data-theme'); return t === 'light' || t === 'dark' ? t : (mq && mq.matches ? 'dark' : 'light'); }
+      function paint() { var d = cur() === 'dark'; b.textContent = d ? '\u2600\uFE0E' : '\u263E\uFE0E';
+        b.setAttribute('aria-label', d ? 'Switch to light mode' : 'Switch to dark mode'); b.title = b.getAttribute('aria-label'); }
+      try { var s = localStorage.getItem(K); if (s === 'light' || s === 'dark') r.setAttribute('data-theme', s); } catch (e) {}
+      b.onclick = function () { var n = cur() === 'dark' ? 'light' : 'dark'; r.setAttribute('data-theme', n); try { localStorage.setItem(K, n); } catch (e) {} paint(); };
+      try { if (mq) mq.addEventListener('change', paint); } catch (e) {}
+      try { new MutationObserver(paint).observe(r, { attributes: true, attributeFilter: ['data-theme'] }); } catch (e) {}
+      paint();
+    })();
+    </script>
     <div class="row" style="justify-content:space-between"><span class="muted small">Ranks every upgrade by how much it raises your total damage.</span><span class="save" id="save-state">Loading…</span></div>
   </header>
   <div id="banner"></div>
@@ -494,6 +676,12 @@ function syncCalcStats(st, agg) {
 /* ---------------- formation context ---------------- */
 function teamOf(st) { return (st.team || []).filter(id => COSTUME[id] && st.costumes[id]); }
 function assistTeamOf(st) { return (st.assistTeam || []).filter(id => ASSIST[id] && st.assists[id]); }
+// total booth level (the game's kitchen-level progress): the 7 booths' levels from Food -> Booths, once any is entered
+function boothTotal(st) {
+  const b = st.booths || {};
+  if (!D.booths || !D.booths.some(x => b[x.id] && +b[x.id].lv > 0)) return null;
+  return D.booths.reduce((a, x) => { const s = b[x.id] || {}; return a + (s.on === false ? 0 : Math.max(1, +s.lv || 1)); }, 0);
+}
 function context(st) {
   const team = teamOf(st), ateam = assistTeamOf(st);
   const chars = new Set(team.map(id => COSTUME[id].char));
@@ -504,7 +692,8 @@ function context(st) {
   let menuLv = 0; for (const k in st.foods) menuLv += st.foods[k].lv || 0;
   let c100 = 0, c200 = 0;
   for (const k in st.costumes) { const lv = st.costumes[k].lv || 0; if (lv >= 100) c100++; if (lv >= 200) c200++; }
-  const prog = { 1: +st.progress.weeding || 0, 2: +st.progress.kitchen || 0, 3: menuLv, 5: c100, 6: c200 };
+  const bTot = boothTotal(st);
+  const prog = { 1: +st.progress.weeding || 0, 2: bTot != null ? bTot : (+st.progress.kitchen || 0), 3: menuLv, 5: c100, 6: c200 };
   return { team, ateam, chars, achars, distinctTags: tags.size, maxAssistStar, assistStars, prog,
     // star of the equipped weapon / tool: from Weapons & Tools when one is marked equipped, else the Little House setting
     weapon: (gearEq(st, 'weapon') || {}).star || +((st.gear || {}).weapon) || 0,
@@ -2487,7 +2676,7 @@ function renderBanner() {
 }
 
 /* ---------------- navigation: one chip per category, plus Stats ---------------- */
-const NAV = [['candy', 'Outfits'], ['assist', 'Assist'], ['gear', 'Weapons & Tools'], ['train', 'Training'], ['house', 'Little House'], ['kc', 'Keychains'],
+const NAV = [['candy', 'Outfits'], ['gear', 'Weapons & Tools'], ['assist', 'Assist'], ['train', 'Training'], ['house', 'Little House'], ['kc', 'Keychains'],
   ['food', 'Food'], ['study', 'Study'], ['home', 'Home'], ['guide', 'Handbook'], ['gacha', 'Gacha'], ['shop', 'Trading Post'], ['set', 'Stats']];  // the game's own order
 const TAB_TOKENS = { shop: 'trading post', gacha: 'gacha', gear: 'gear', home: 'home items', food: 'food', candy: 'outfits', train: 'training', study: 'study', assist: 'assists', kc: 'keychains', house: 'house', guide: 'handbook', home: 'home', train: 'training', study: 'study', set: 'stats' };
 function current() { return ui.tab === 'set' ? 'set' : ui.cat; }
@@ -2536,7 +2725,7 @@ const CAT_INTRO = {
   gear: 'Weapons and tools only level up from gacha copies (Lv 1–100). Every one you own gives its bonus effect, and the one weapon and one tool you equip also give their equip bonus (a tool\'s is HP). Enter what you own and its level; Handbook weapon & tool sets are then worked out for you.',
   shop: 'Which outfit to trade 10 outfit tickets for. Every outfit you don\'t own yet from the sets in the shop is scored by the damage it adds once maxed (Lv 200, promotion 5): its level bonuses and promotion count for the whole account wherever it sits, plus anything it adds by joining the team. The extra cooking coins it makes in your booths count as the food levels they buy.',
   gacha: 'Where your gems add the most damage. Each pull is scored by every prize it can give: its chance per draw times what one more copy adds (a new item, a share of its next level, or a keychain merge), plus its share of the next level of any Handbook set it belongs to. Weapons & Tools and Assists odds get better as their gacha levels up; Keychain odds never change. Everything uses what you\'ve entered in the other tabs.',
-  house: 'There are 5 shelves, and you display one item from each. The display bonuses of all 5 shelves (and your keychains\' equip bonuses) add up per stat into one multiplier, so an item that\'s the only one giving its stat counts in full: +1,600% ATK on its own is ×17. Every item you own also keeps its owned bonus when it isn\'t displayed. Past level 100, raising an item\'s cap takes little-house big candies.',
+  house: 'Displayed bonuses of all 5 shelves and keychains\' equip bonuses add up per stat into one multiplier. Every item you own also provides its own bonus when it isn\'t displayed.',
   guide: 'Dishes entries level up with your foods: each level needs every dish in the set at that level, so the ranking shows which foods to raise. Home events level up from seeing one scene enough times, and sets and memories unlock once. Weapons, tools and assists come from the gacha, so they\'re shown but not ranked.',
   home: 'Every home item adds ATK per level. Ranking is based on max level Handbook bonus. Recommended layouts are based on home items that still have handbook levels.',
   train: 'Which Training node to level next, per Training Pt. Locked nodes that are worth reaching show the whole path, so a branch through coin or HP nodes can still win.',
@@ -2650,7 +2839,7 @@ function costText(c) {
 function itemPill(c) {
   if (c.cat === 'food' && c.sub === 'set') return '<span class="pill hbk">Handbook set</span>';
   if (c.cat === 'food') return `<span class="pill r${c.rarity}">${RAR[c.rarity]}</span>`;
-  if (c.cat === 'kc') return `<span class="pill">${c.star}★</span>`;
+  if (c.cat === 'kc') return `<span class="pill st${c.star}">${c.star}★</span>`;
   if (c.sub) return `<span class="pill">${esc(c.sub)}</span>`;
   return '';
 }
@@ -2704,7 +2893,7 @@ function renderRanking() {
     else html += `<ol class="rank">${shown.map((c, i) => {
       const per = priced ? perOf(c) : null;
       const w = Math.max(2, Math.min(100, 100 * (priced ? per : c.gain) / top));
-      return `<li class="up${i === 0 ? ' top' : ''}">
+      return `<li class="up${i === 0 ? ' top' : ''}"${c.char ? ` data-char="${c.char}" data-cat="${c.cat}"` : ''}>
         <span class="pos">${i + 1}</span>
         <div class="what"><div class="name">${esc(c.name)} ${itemPill(c)}</div><div class="act">${esc(c.action)}</div></div>
         <div class="gain${c.gain < 0 ? ' neg' : ''}" title="Change in total damage">${fmtPct(c.gain)}</div>
@@ -2815,7 +3004,7 @@ function editAssists() {
     const s = st.assists[a.id] || { lv: 0 };
     const sk = D.skills[a.skill]; const e = sk && sk.effects[0];
     const what = e ? (e.type === 'Attack' ? (e.range === 'Range' ? 'hits all enemies' : 'hits one enemy') : 'team buff / debuff') : '';
-    return `<div class="item${s.lv ? '' : ' off'}"><div class="nm">${esc(a.name)} <span class="pill">${assistStar(a)}★</span><br><span class="muted">${what} · every ${sk ? sk.recastMs / 1000 : '?'}s${s.lv ? ' · ' + copiesText(s.lv) : ''}</span></div>
+    return `<div class="item${s.lv ? '' : ' off'}"><div class="nm">${esc(a.name)} <span class="pill st${assistStar(a)}">${assistStar(a)}★</span><br><span class="muted">${what} · every ${sk ? sk.recastMs / 1000 : '?'}s${s.lv ? ' · ' + copiesText(s.lv) : ''}</span></div>
       <div class="ctl">${numInput('ast-lv-' + a.id, s.lv || 0, 0, 100, 'Lv')}
         <label for="ast-eq-${a.id}"><input type="checkbox" id="ast-eq-${a.id}"${st.assistTeam.includes(a.id) ? ' checked' : ''}${s.lv >= 1 ? '' : ' disabled'}>Equipped</label></div></div>`;
   }).join('')}</div>`;
@@ -2963,7 +3152,7 @@ function editGear() {
   const chips = ['weapon', 'tool'].map(k => `<button class="chip" data-gearkind="${k}" aria-pressed="${kind === k}">${k === 'weapon' ? 'Weapons' : 'Tools'} <span class="muted">${ownedN(k)}</span></button>`).join('');
   const body = `<div class="row" style="gap:6px">${chips}</div><div class="items">${list.map(g => {
     const lv = gearLv(st, kind, g.id), L = Math.max(1, lv);
-    return `<div class="item${lv ? '' : ' off'}"><div class="nm">${esc(g.name)} <span class="pill">${g.star}★</span><br>
+    return `<div class="item${lv ? '' : ' off'}"><div class="nm">${esc(g.name)} <span class="pill st${g.star}">${g.star}★</span><br>
       <span class="muted">Owned: ${esc(SHORT[g.pos.st] || g.pos.st)} +${gearPct(fxVal(g.pos, L) * 100)} · Equipped: ${esc(SHORT[g.eq.st] || g.eq.st)} +${gearPct(fxVal(g.eq, L) * 100)}${lv ? '<br>' + copiesText(lv) : ' (at Lv 1)'}</span></div>
       <div class="ctl">${numInput('g' + kind[0] + '-lv-' + g.id, lv, 0, 100, 'Lv')}
         <label for="g${kind[0]}-eq-${g.id}"><input type="radio" name="gear-eq-${kind}" id="g${kind[0]}-eq-${g.id}"${eqId == g.id && lv ? ' checked' : ''}${lv ? '' : ' disabled'}>Equipped</label></div></div>`;
@@ -2982,7 +3171,7 @@ function sectionGear() {
   const same = (gearEq(st, 'weapon') || {}).id === best.weapon && (gearEq(st, 'tool') || {}).id === best.tool;
   const row = (kind, id) => { const g = GEAR[kind][id], now = gearEq(st, kind);
     return `<div class="item"><div class="nm"><b>${kind === 'weapon' ? 'Weapon' : 'Tool'}</b>${now && now.id !== id ? `<br><span class="muted">now: ${esc(now.name)}</span>` : ''}</div>
-      <div class="small" style="text-align:right">${g ? `${esc(g.name)} <span class="muted">${g.star}★ Lv ${gearLv(st, kind, id)}</span><br><span class="muted">equip: ${esc(SHORT[g.eq.st] || g.eq.st)} +${fmtNum(fxVal(g.eq, gearLv(st, kind, id)) * 100)}%</span>` : '<span class="muted">none owned</span>'}</div></div>`; };
+      <div class="small" style="text-align:right">${g ? `${esc(g.name)} <span class="pill st${g.star}">${g.star}★</span> <span class="muted">Lv ${gearLv(st, kind, id)}</span><br><span class="muted">equip: ${esc(SHORT[g.eq.st] || g.eq.st)} +${fmtNum(fxVal(g.eq, gearLv(st, kind, id)) * 100)}%</span>` : '<span class="muted">none owned</span>'}</div></div>`; };
   f.innerHTML = `<section class="card stack">
       <div class="row" style="justify-content:space-between"><h2>What to equip</h2><span class="muted small">one of each</span></div>
       <div class="items">${row('weapon', best.weapon)}${row('tool', best.tool)}</div>
@@ -3248,16 +3437,19 @@ function sectionTeam() {
   for (const id of ownedCos) (byChar[COSTUME[id].char] = byChar[COSTUME[id].char] || []).push(id);
   const team = st.team.slice(); while (team.length < 6) team.push(null);
   const fight = st.mode === 'boss' && teamOf(st).length ? evaluate(st, base) : null;
-  const firesOf = id => { const sl = fight && id && fight.slots.find(s => s.id === id); return sl && sl.hits ? `special hits at ${sl.hits.map(t => Math.floor(t) + 's').join(', ')}${sl.hitKnown ? '' : ' (hit time estimated)'}` : ''; };
+  const firesOf = id => { const sl = fight && id && fight.slots.find(s => s.id === id); return sl && sl.hits ? `special hits at ${sl.hits.map(t => Math.floor(t) + 's' + (sl.hitKnown ? '' : '*')).join(', ')}` : ''; };
+  const estHit = fight && teamOf(st).some(id => !hitKnown(id));
   const cosOptions = sel => `<option value="">— empty —</option>` + [1, 2, 3, 4, 5, 6, 7].filter(c => byChar[c]).map(c =>
     `<optgroup label="${esc(charName(c))}">${byChar[c].sort((a, b) => COSTUME[a].sort - COSTUME[b].sort).map(id =>
       `<option value="${id}"${id == sel ? ' selected' : ''}>${esc(costumeName(COSTUME[id]))} · Lv ${st.costumes[id].lv}</option>`).join('')}</optgroup>`).join('');
   f.innerHTML = `<section class="card stack">
       <h2>Your team</h2>
       <p class="muted small" style="margin:0">One outfit per character. Specials go off in team order when multiple are ready.</p>
-      <div class="slots">${team.map((id, i) => `<div class="slot"><span class="i">${i + 1}</span>
+      <div class="slots">${team.map((id, i) => `<div class="slot"${id ? ` data-char="${COSTUME[id].char}"` : ''}><span class="ch">${id ? esc(charName(COSTUME[id].char)) : 'Empty'}</span><span class="i">${i + 1}</span>
+        <span class="cn" aria-hidden="true">${id ? `<span>${esc(DATA2.sets[COSTUME[id].set] || '')}</span><b>Lv ${st.costumes[id].lv}</b>` : '<span>Tap to pick</span>'}</span>
         <select id="team-${i}" aria-label="Team slot ${i + 1}">${cosOptions(id)}</select>
-        <span class="row" style="gap:4px"><button class="mv" data-mv="team:${i}:-1" aria-label="Move up"${i ? '' : ' disabled'}>↑</button><button class="mv" data-mv="team:${i}:1" aria-label="Move down"${i < 5 ? '' : ' disabled'}>↓</button></span>${firesOf(id) ? `<span class="fires">${firesOf(id)}</span>` : ''}</div>`).join('')}</div>
+        <span class="row" style="gap:4px"><button class="mv" data-mv="team:${i}:-1" aria-label="Move earlier"${i ? '' : ' disabled'}>‹</button><button class="mv" data-mv="team:${i}:1" aria-label="Move later"${i < 5 ? '' : ' disabled'}>›</button></span>${firesOf(id) ? `<span class="fires">${firesOf(id)}</span>` : ''}</div>`).join('')}</div>
+      ${estHit ? '<p class="slots-note">* Estimated hit time: this outfit isn\'t in the game data yet, so it uses the average of that character\'s other outfits.</p>' : ''}
       <div class="row"><button class="btn primary" id="find-team">Find best team &amp; order</button><span class="muted small" id="team-status"></span></div>
       <div id="team-result"></div>
     </section>`;
@@ -3348,7 +3540,7 @@ function sectionAssists() {
         <ol class="rank">${r.assists.map((id, i) => { const a = ASSIST[id]; const sl = slotOf(id); const L = lights(id);
           return `<li class="up" style="grid-template-columns:26px 1fr auto">
             <span class="pos">${i + 1}</span>
-            <div class="what"><div class="name">${esc(a.name)} <span class="pill">${assistStar(a)}★</span> <span class="muted small">Lv ${st.assists[id].lv}</span></div>
+            <div class="what"><div class="name">${esc(a.name)} <span class="pill st${assistStar(a)}">${assistStar(a)}★</span> <span class="muted small">Lv ${st.assists[id].lv}</span></div>
               <div class="act">${esc(assistRole(a))}${L.length ? ` · turns on ${esc(L.join(', '))}` : ''}</div>
               ${sl.hits ? `<div class="act">hits at ${sl.hits.map(t => Math.floor(t) + 's').join(', ')}</div>` : ''}</div>
             <div class="gain" style="color:var(--ink)"></div></li>`; }).join('')}</ol>
@@ -3429,7 +3621,7 @@ function sectionKeychains() {
       <div class="row" style="justify-content:space-between"><h2>Keychains to equip</h2>${showJ ? '<span class="muted small">with your current assists</span>' : ''}</div>
       <div class="items">${[1, 2, 3, 5, 4, 6, 7].map(c => { const id = byChar[c]; const k = id && KEYCHAIN[id]; const s = id && st.keychains[id];
         const v = k && D.cfx[k.equip] ? fxVal(D.cfx[k.equip].fx, Math.max(1, s.lv || 1)) : 0;
-        return `<div class="item"><div class="nm"><b>${esc(charName(c))}</b>${team.has(c) ? '' : ' <span class="muted">· not in your team</span>'}</div>
+        return `<div class="item" data-char="${c}"><div class="nm"><b>${esc(charName(c))}</b>${team.has(c) ? '' : ' <span class="muted">· not in your team</span>'}</div>
           <div class="small" style="text-align:right">${k ? `${esc(assistName(k.assist))} ${s.star}★ Lv ${s.lv || 1}<br><span class="muted">${esc(charName(c))} ATK +${fmtNum(v * 100)}%${s.star >= 2 ? (aon.has(k.assist) ? ' · star bonuses on' : ` · star bonuses off (${esc(assistName(k.assist))} not equipped)`) : ''}</span>` : '<span class="muted">none owned</span>'}
           </div>${kcChallengerRows(ch[c] || [])}</div>`; }).join('')}</div>
       ${same ? '<div class="result">You already have the best keychains equipped.</div>'
@@ -3453,7 +3645,7 @@ function sectionHouse() {
       <p class="muted small" style="margin:0">Food and outfit levels are counted for you.</p>
       <div class="field"><label for="g-weapon">Equipped weapon's stars${gearEq(st, 'weapon') ? '<br><span class="hint">from Weapons & Tools</span>' : ''}</label><select id="g-weapon"${gearEq(st, 'weapon') ? ' disabled' : ''}>${[0, 1, 2, 3, 4, 5, 6, 7, 8].map(n => `<option value="${n}"${n == context(st).weapon ? ' selected' : ''}>${n ? n + '★' : 'none'}</option>`).join('')}</select></div>
       <div class="field"><label for="g-tool">Equipped tool's stars${gearEq(st, 'tool') ? '<br><span class="hint">from Weapons & Tools</span>' : ''}</label><select id="g-tool"${gearEq(st, 'tool') ? ' disabled' : ''}>${[0, 1, 2, 3, 4, 5, 6, 7, 8].map(n => `<option value="${n}"${n == context(st).tool ? ' selected' : ''}>${n ? n + '★' : 'none'}</option>`).join('')}</select></div>
-      <div class="field"><label for="p-kitchen">Total booth level<br><span class="hint">all kitchens added up</span></label><input type="number" id="p-kitchen" min="0" value="${st.progress.kitchen}"></div>
+      <div class="field"><label for="p-kitchen">Total booth level<br><span class="hint">${boothTotal(st) != null ? 'from Food → Booths' : 'all kitchens added up'}</span></label><input type="number" id="p-kitchen" min="0" value="${boothTotal(st) != null ? boothTotal(st) : st.progress.kitchen}"${boothTotal(st) != null ? ' disabled' : ''}></div>
       <div class="field"><label for="p-weeding">Weeding distance</label><input type="number" id="p-weeding" min="0" value="${st.progress.weeding}"></div>
     </div></details>`;
   if (!any) { f.innerHTML = '<div class="empty">Add the little-house items you own under <b>Your little house</b> below, and the best item for each shelf will show here.</div>' + cond; bindCond(); return; }
