@@ -294,6 +294,8 @@ const DATA2 = {"chars":{"1":"Chiikawa","2":"Hachiware","3":"Usagi","4":"Kurimanj
 'use strict';
 
 const D = DATA2;
+// Fest Rank → dish it unlocks (CookingCafeLevel rewards; White Rice comes from the first Fest mission)
+D.festDishes = [[1,1],[7,2],[10,4],[13,5],[16,11],[19,12],[21,14],[23,15],[26,22],[28,23],[30,24],[32,25],[33,31],[35,32],[36,33],[38,34],[39,41],[41,42],[42,43],[43,45],[45,51],[46,52],[48,54],[49,55],[51,6],[58,27],[62,36],[64,38],[65,46],[67,47],[68,57],[70,58],[72,9],[74,10],[76,19],[78,20],[88,49],[93,59],[95,60],[120,8],[146,37]];
 
 /* ---------------- numbers: the game prints a=10^3, b=10^6 … ---------------- */
 function tierLetters(t) {
@@ -2372,6 +2374,12 @@ function toast(msg, undo) {
 function setSave(msg) { $('#save-state').textContent = msg; }
 
 /* ---------------- state + storage ---------------- */
+/* Dishes unlocked by the Fest Rank: any not owned yet are set to Lv 1 (never lowers anything). Returns how many were added. */
+function festUnlock(s) {
+  const r = (s.fest && +s.fest.rank) || 0; let n = 0;
+  for (const [lv, id] of D.festDishes) if (r >= lv && !(s.foods[id] && +s.foods[id].lv >= 1)) { s.foods[id] = Object.assign({ cap: 100 }, s.foods[id] || {}, { lv: 1 }); n++; }
+  return n;
+}
 function normalize(s) {
   const b = blankState();
   const o = Object.assign(b, s || {});
@@ -2388,6 +2396,7 @@ function normalize(s) {
   o.fest = Object.assign({ rank: 1, boost: false }, o.fest || {});
   o.kcSlots = 1;
   o.team = (o.team || []).slice(0, 6); o.assistTeam = (o.assistTeam || []).slice(0, 6);
+  festUnlock(o);
   return o;
 }
 function exampleState() {
@@ -3689,7 +3698,7 @@ function onBoothEdit(e) {
     const b = st.booths[m[2]] = Object.assign({}, st.booths[m[2]]);
     if (m[1] === 'on') b.on = el.checked;
     else if (m[1] === 'lv') b.lv = clampInt(el.value, 1, 999);
-  } else if (id === 'fest-rank') st.fest.rank = clampInt(el.value, 0, 999);
+  } else if (id === 'fest-rank') { st.fest.rank = clampInt(el.value, 0, 999); const n = festUnlock(st); if (n) { toast(`Fest Rank ${st.fest.rank}: ${n} new dish${n === 1 ? '' : 'es'} added at Lv 1`); renderRanking(); renderEditor(); } }
   else if (id === 'fest-boost') st.fest.boost = el.checked;
   scheduleSave(); renderBooths();
 }
