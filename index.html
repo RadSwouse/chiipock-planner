@@ -2968,7 +2968,7 @@ function sectionGear() {
 }
 function editKeychains() {
   const owned = Object.values(st.keychains).filter(k => k.star >= 1).length;
-  const chips = [1, 2, 3, 4, 5, 6, 7].map(c => `<button class="chip" data-kcchar="${c}" aria-pressed="${ui.kcChar === c}">${esc(charName(c))}</button>`).join('');
+  const chips = [1, 2, 3, 5, 4, 6, 7].map(c => `<button class="chip" data-kcchar="${c}" aria-pressed="${ui.kcChar === c}">${esc(charName(c))}</button>`).join('');
   const list = D.keychains.filter(k => k.char === ui.kcChar).sort((a, b) => ASSIST_BY_CHAR[a.assist].order - ASSIST_BY_CHAR[b.assist].order);
   const body = `<div class="chips">${chips}</div><div class="items">${list.map(k => {
     const s = st.keychains[k.id] || { star: 0, lv: 1, eq: false };
@@ -3399,7 +3399,7 @@ function sectionKeychains() {
         <div class="row"><button class="btn primary" id="use-joint">I've done both</button></div></div>
     </section>` : ''}<section class="card stack">
       <div class="row" style="justify-content:space-between"><h2>Keychains to equip</h2>${showJ ? '<span class="muted small">with your current assists</span>' : ''}</div>
-      <div class="items">${[1, 2, 3, 4, 5, 6, 7].map(c => { const id = byChar[c]; const k = id && KEYCHAIN[id]; const s = id && st.keychains[id];
+      <div class="items">${[1, 2, 3, 5, 4, 6, 7].map(c => { const id = byChar[c]; const k = id && KEYCHAIN[id]; const s = id && st.keychains[id];
         const v = k && D.cfx[k.equip] ? fxVal(D.cfx[k.equip].fx, Math.max(1, s.lv || 1)) : 0;
         return `<div class="item"><div class="nm"><b>${esc(charName(c))}</b>${team.has(c) ? '' : ' <span class="muted">· not in your team</span>'}</div>
           <div class="small" style="text-align:right">${k ? `${esc(assistName(k.assist))} ${s.star}★ Lv ${s.lv || 1}<br><span class="muted">${esc(charName(c))} ATK +${fmtNum(v * 100)}%${s.star >= 2 ? (aon.has(k.assist) ? ' · star bonuses on' : ` · star bonuses off (${esc(assistName(k.assist))} not equipped)`) : ''}</span>` : '<span class="muted">none owned</span>'}
