@@ -394,6 +394,8 @@ input[type=checkbox], input[type=radio] { accent-color: var(--btn-b); }
 .slot select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .slot .row { justify-content: center; position: relative; z-index: 1; }
 .slot .mv { width: 28px; height: 26px; font-size: .8rem; }
+.aslot .ch { font-size: .76rem; }
+.aslot .cn .pill { font-size: .62rem; padding: 0 5px; }
 .slot .fires { grid-column: auto; margin: 0; padding: 0 5px; font-size: .66rem; line-height: 1.3; color: var(--muted); position: relative; z-index: 1; pointer-events: none; }
 
 /* keychains to equip: each character's card wears its keychain outline colour */
@@ -2842,19 +2844,20 @@ function renderUpgrades() {
       <div id="food-body" class="stack"></div>`;
     v.querySelectorAll('[data-fv]').forEach(b => b.onclick = () => { ui.foodView = b.dataset.fv; renderUpgrades(); });
     if (ui.foodView === 'booths') { renderBooths(); return; }
-    $('#food-body').innerHTML = `<p class="muted small" style="margin:0">${esc(CAT_INTRO.food)}</p>
-      <section class="card stack" id="candyplan"></section>
+    $('#food-body').innerHTML = `<section class="card stack" id="candyplan"></section>
       <div class="stack" id="rank"></div><div id="inv-wrap"></div>`;
     renderRanking(); renderEditor();
     return;
   }
   const feat = FEATURES[ui.cat] ? '<div id="feature" class="stack"></div>' : '';
   v.innerHTML = `
+    ${ui.cat === 'assist' ? '<div id="aslots"></div>' : ''}
     ${ui.cat === 'home' ? '' : feat}
     ${CAT_INTRO[ui.cat] ? `<p class="muted small" style="margin:0">${esc(CAT_INTRO[ui.cat])}</p>` : ''}
     ${ui.cat === 'assist' || ui.cat === 'gear' || ui.cat === 'gacha' || ui.cat === 'shop' ? '' : '<div class="stack" id="rank"></div>'}
     ${ui.cat === 'home' ? feat : ''}
     <div id="inv-wrap"></div>`;
+  if (ui.cat === 'assist') sectionAssistSlots();
   if (FEATURES[ui.cat]) FEATURES[ui.cat]();
   renderRanking();
   renderEditor();
@@ -3083,10 +3086,9 @@ function editAssists() {
     const sk = D.skills[a.skill]; const e = sk && sk.effects[0];
     const what = e ? (e.type === 'Attack' ? (e.range === 'Range' ? 'hits all enemies' : 'hits one enemy') : 'team buff / debuff') : '';
     return `<div class="item${s.lv ? '' : ' off'}"><div class="nm">${esc(a.name)} <span class="pill st${assistStar(a)}">${assistStar(a)}★</span><br><span class="muted">${what} · every ${sk ? sk.recastMs / 1000 : '?'}s${s.lv ? ' · ' + copiesText(s.lv) : ''}</span></div>
-      <div class="ctl">${numInput('ast-lv-' + a.id, s.lv || 0, 0, 100, 'Lv')}
-        <label for="ast-eq-${a.id}"><input type="checkbox" id="ast-eq-${a.id}"${st.assistTeam.includes(a.id) ? ' checked' : ''}${s.lv >= 1 ? '' : ' disabled'}>Equipped</label></div></div>`;
+      <div class="ctl">${numInput('ast-lv-' + a.id, s.lv || 0, 0, 100, 'Lv')}</div></div>`;
   }).join('')}</div>`;
-  return { title: `Set each assist\'s level as the game shows it (it rises with duplicate pulls). Lv 0 means not owned. Tick the 6 you have equipped (${st.assistTeam.length} of 6 now).`, count: `${owned} of ${D.assists.length} owned`, body };
+  return { title: `Set each assist\'s level as the game shows it (it rises with duplicate pulls). Lv 0 means not owned. Equip them under Your assists at the top.`, count: `${owned} of ${D.assists.length} owned`, body };
 }
 const gnum = n => Math.round(+n || 0).toLocaleString('en-US');  // gems and draws: plain numbers, as the game shows them
 function editGacha() {
@@ -3441,16 +3443,10 @@ function onEdit(e) {
       if (lv >= 1) st[inv][m[3]] = lv; else { delete st[inv][m[3]]; if (st[key] == m[3]) st[key] = 0; }
     } else if (el.checked) st[key] = +m[3];
     changed(); setTimeout(renderEditor, 0); return;  // re-draw after the input's own change/blur has finished
-  } else if ((m = id.match(/^ast-eq-(\d+)$/))) {
-    const aid = +m[1];
-    if (el.checked) {
-      if (st.assistTeam.length >= 6) { el.checked = false; toast('6 assists are already equipped. Untick one first.'); return; }
-      st.assistTeam = st.assistTeam.concat([aid]);
-    } else st.assistTeam = st.assistTeam.filter(x => x != aid);
-    changed(); renderEditor(); return;
   } else if ((m = id.match(/^ast-lv-(\d+)$/))) {
     const lv = clampInt(el.value, 0, 100);  // assists top out at Lv 100
-    if (lv >= 1) st.assists[m[1]] = { lv }; else { delete st.assists[m[1]]; st.assistTeam = st.assistTeam.filter(x => x != m[1]); }
+    if (lv >= 1) st.assists[m[1]] = { lv }; else { delete st.assists[m[1]]; st.assistTeam = st.assistTeam.map(x => x == m[1] ? null : x); }
+    if (ui.cat === 'assist') setTimeout(sectionAssistSlots, 0);
   } else if ((m = id.match(/^kc-(st|lv|eq|cp)-(\d+)$/))) {
     const s = st.keychains[m[2]] || { star: 0, lv: 1, eq: false };
     if (m[1] === 'st') s.star = clampInt(el.value, 0, 7);
@@ -3534,6 +3530,46 @@ function sectionTeam() {
   f.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => { const [, i, d] = b.dataset.mv.split(':'); moveSlot(+i, +d); });
   $('#find-team').onclick = runTeam;
   renderTeamResult();
+}
+/* Your assists: the 6 equipped assists in the game's slot order (it's the order they go off in at the start of a
+   fight), set like the outfit team: tap a slot to pick, ‹ › to move. Empty slots stay as null in st.assistTeam. */
+const assistShort = a => a.name.replace(/ (no )?Yoroi-san$| Ojisan$| Partyers$/, '');
+function sectionAssistSlots() {
+  const f = $('#aslots'); if (!f) return;
+  const owned = D.assists.filter(a => st.assists[a.id] && st.assists[a.id].lv >= 1).sort((a, b) => a.order - b.order);
+  const slots = (st.assistTeam || []).slice(0, 6).map(id => id && ASSIST[id] && st.assists[id] && st.assists[id].lv >= 1 ? id : null);
+  while (slots.length < 6) slots.push(null);
+  const fight = (st.mode === 'boss' || st.mode === 'power') && assistTeamOf(st).length ? evaluate(st, base) : null;
+  const hitsOf = id => { const sl = fight && fight.aslots && fight.aslots.find(s => s.id === id); return sl && sl.hits && sl.hits.length ? `hits at ${sl.hits.map(t => Math.floor(t) + 's').join(', ')}` : ''; };
+  const opts = sel => `<option value="">— empty —</option>` + owned.map(a =>
+    `<option value="${a.id}"${a.id == sel ? ' selected' : ''}>${esc(a.name)} · ${assistStar(a)}★ · Lv ${st.assists[a.id].lv}</option>`).join('');
+  f.innerHTML = `<section class="card stack">
+      <h2>Your assists</h2>
+      <p class="muted small" style="margin:0">Set these in the same order as in the game. Assists go off in this order at the start of a fight, then whenever they're ready.</p>
+      ${owned.length ? `<div class="slots">${slots.map((id, i) => { const a = id && ASSIST[id], h = a ? hitsOf(id) : '';
+        return `<div class="slot aslot"><span class="ch">${a ? esc(assistShort(a)) : 'Empty'}</span><span class="i">${i + 1}</span>
+        <span class="cn" aria-hidden="true">${a ? `<span><span class="pill st${assistStar(a)}">${assistStar(a)}★</span></span><b>Lv ${st.assists[id].lv}</b>` : '<span>Tap to pick</span>'}</span>
+        <select id="aslot-${i}" aria-label="Assist slot ${i + 1}">${opts(id)}</select>
+        <span class="row" style="gap:4px"><button class="mv" data-amv="${i}:-1" aria-label="Move earlier"${i ? '' : ' disabled'}>‹</button><button class="mv" data-amv="${i}:1" aria-label="Move later"${i < 5 ? '' : ' disabled'}>›</button></span>${h ? `<span class="fires">${h}</span>` : ''}</div>`; }).join('')}</div>`
+        : '<div class="empty">Set the levels of the assists you own under <b>Your assists</b> below first.</div>'}
+    </section>`;
+  f.querySelectorAll('select[id^=aslot-]').forEach(sel => sel.onchange = () => setAssistSlot(+sel.id.split('-')[1], sel.value ? +sel.value : null));
+  f.querySelectorAll('[data-amv]').forEach(b => b.onclick = () => { const [i, d] = b.dataset.amv.split(':'); moveAssistSlot(+i, +d); });
+}
+function assistSlotsChanged() {
+  while (st.assistTeam.length && st.assistTeam[st.assistTeam.length - 1] == null) st.assistTeam.pop();
+  changed('quiet'); sectionAssistSlots(); sectionAssists();
+}
+function setAssistSlot(i, id) {
+  const arr = (st.assistTeam || []).slice(0, 6); while (arr.length < 6) arr.push(null);
+  const j = id == null ? -1 : arr.findIndex(x => x == id);
+  if (j >= 0 && j !== i) arr[j] = arr[i];  // already equipped elsewhere: the two swap places
+  arr[i] = id; st.assistTeam = arr; assistSlotsChanged();
+}
+function moveAssistSlot(i, d) {
+  const arr = (st.assistTeam || []).slice(0, 6); while (arr.length < 6) arr.push(null);
+  const j = i + d; if (j < 0 || j > 5) return;
+  [arr[i], arr[j]] = [arr[j], arr[i]]; st.assistTeam = arr; assistSlotsChanged();
 }
 function setSlot(i, id) {
   const arr = st.team.slice(); while (arr.length < 6) arr.push(null);
@@ -3634,7 +3670,7 @@ function sectionAssists() {
         x.assistTeam = r.assists.slice();
         for (const [ch, id] of kcCh) for (const k in x.keychains) if (KEYCHAIN[k].char == ch) x.keychains[k].eq = +k === +id;
       });
-      changed('quiet'); sectionAssists(); renderEditor(); toast('Assists updated' + statNote(m));
+      changed('quiet'); sectionAssistSlots(); sectionAssists(); renderEditor(); toast('Assists updated' + statNote(m));
     };
   }, 30);
 }
