@@ -1039,7 +1039,7 @@ const BOSS_FRAC = { boss: 1 };  // 'power' (rank by Total Power) uses the banner
 /* Boss fights last 35 seconds, and assists' skills go off one at a time from a queue: at the start in the order
    they're equipped, then whoever is ready first (Config: 2 s queue wait between skills). This gives each assist's
    cast times in the fight, so a buff only counts for the part of the fight it's up and late slots cast less. */
-const FIGHT_S = 35, ASSIST_GAP = 2;
+const FIGHT_S = 35, ASSIST_GAP = 2, FRAME_S = 1 / 30;
 function assistTimeline(ateam, acdr) {
   // the game's assist queue: first come, first served; its 2 s wait timer keeps counting while the queue is idle,
   // so after a quiet stretch the next assist goes as soon as it's ready (the timer starts full)
@@ -1058,8 +1058,8 @@ function assistTimeline(ateam, acdr) {
   }
   return times;
 }
-/* Boss fight, second by second: outfit specials are all charged at the start and go off in equip order 1 s apart
-   (checked in game), then whoever is ready first; assists the same, 2 s apart. Every hit is multiplied by the buffs
+/* Boss fight, second by second: outfit specials are all charged at the start and go off in equip order 0.5 s apart,
+   then whoever is ready first; assists the same, 2 s apart. Every hit is multiplied by the buffs
    and debuffs up at that moment, and normal attacks by the buffs up while they're swinging, so buffs placed before
    the big hitters pay off. Shisa-style resets cut the remaining cooldown of damage-dealing specials. */
 const OUTFIT_GAP = 1;
@@ -1070,21 +1070,25 @@ const OUTFIT_GAP = 1;
    Reduce Special & Assist Cooldown (Cream Puff is the only source today, so both get the same 45% cut). Hits that land
    after the 35 s timer don't count. ATK buffs add up (two ATK buffs give 1 + a + b, the game sums them into one rate), as do debuffs of one kind (two −DEF% debuffs give 1 + a + b), and a buff or debuff
    re-cast while its last window is still up adds a second copy (the game keeps both) instead of refreshing it.
-   Specials queue at least 0.5 s apart and only once the character is in position; fights measured on Nov 1 showed
-   them going off about 1.1 s apart at the start, which is kept. Small timing wobble in the game makes an order whose
+   Specials go through the game's special queue (SkillQueue, UpdateSkillFire): first come, first served, one per frame
+   at most, and only once the character is in position (true for the whole boss fight). Its 0.5 s wait timer starts
+   full, gains every frame's time even while the queue is empty (no cap), and each special spends 0.5 s of it, so they
+   go 0.5 s apart from a standing start but back to back after a quiet stretch (Nov 23 recording: two specials one
+   frame apart). The assist queue works the same way with a 2 s wait. Small timing wobble in the game makes an order whose
    hits land right at a buff's edge (or right at the end of the fight) swing between fights, so orders are scored on
    the average of a few wobbled fights (robustRuns), and orders within 2% are treated as a tie.
    NEW OUTFIT SETS: add each new outfit's hit time to HIT_S (from the game files, or timed from a screen recording:
-   seconds from the special's animation starting to its damage number appearing). Until then an outfit uses the
+   seconds from the special's icon lighting up to the boss's HP dropping; Nov 23: Neverland Rakko, A Touch of
+   Autumn Chiikawa and Moon Festival Shisa, calibrated on Mermaid Island Hachiware and Pumpkin Fest Usagi). Until then an outfit uses the
    average of that character's known outfits. */
-const HIT_S = {11001:1.8,12001:2,13001:1.967,14001:1.667,15001:1,16001:1.867,17001:1.967,21001:2,21002:1.8,22001:1.967,22002:2,23001:1.433,23002:1.433,31001:1.8,31002:1.8,31003:2.002,31004:2,31005:2,31006:2,31007:2.002,31008:1.633,31009:1.433,31010:2.002,31011:2.267,31012:2,31013:1.8,31014:2.4,31015:1.8,31016:1.8,31017:2.167,31018:1.933,32001:2,32002:2,32003:1.967,32004:1.967,32005:2.033,32006:1.967,32007:2,32008:1.967,32009:2.167,32010:1.967,32011:2,32012:2.167,32013:2,32014:0.833,32015:2.167,32016:1.967,32017:1.967,32018:1.933,33001:1.967,33002:1.967,33003:1.433,33004:1.433,33005:2,33006:1.433,33007:1.433,33008:2.833,33009:0.5,33010:1.433,33011:2,33012:2.033,33013:2.1,33014:1.467,33015:2.333,33016:1.367,33017:1.467,33018:1.933,34001:1.667,34002:2.3,34003:1.667,34004:1.667,34005:1.7,34006:1.667,34007:1.667,34008:1.733,34009:1.9,34010:1.667,34011:1.667,34012:1.433,34013:1.667,34014:1.9,34015:1.667,34016:1.667,34017:1.667,34018:1.667,35001:1,35002:1,35003:1,35004:1,35005:2.133,35006:1,35007:1,35008:2.133,35009:1.067,35010:2.133,35011:0.833,35012:1,35013:2.3,35014:2.3,35015:1.133,35016:1.133,35017:1.133,35018:1.933,36001:1.867,36002:1.867,36003:3.133,36004:1.867,36005:1.867,36006:1.867,36007:1.867,36008:1.167,36009:2.4,36010:1.867,36011:1.733,36012:1.867,36013:2.233,36014:2.233,36015:1.867,36016:1.867,36017:1.867,36018:2.133,37001:1.967,37002:1.967,37003:1.967,37004:1.967,37005:2.3,37006:1.967,37007:2.3,37008:1.667,37009:2.167,37010:2.3,37011:1.3,37012:2.3,37013:2.167,37014:2.167,37015:2.3,37016:2.333,37017:1.967,37018:2.267};
+const HIT_S = {11001:1.8,12001:2,13001:1.967,14001:1.667,15001:1,16001:1.867,17001:1.967,21001:2,21002:1.8,22001:1.967,22002:2,23001:1.433,23002:1.433,31001:1.8,31002:1.8,31003:2.002,31004:2,31005:2,31006:2,31007:2.002,31008:1.633,31009:1.433,31010:2.002,31011:2.267,31012:2,31013:1.8,31014:2.4,31015:1.8,31016:1.8,31017:2.167,31018:1.933,31021:1.867,32001:2,32002:2,32003:1.967,32004:1.967,32005:2.033,32006:1.967,32007:2,32008:1.967,32009:2.167,32010:1.967,32011:2,32012:2.167,32013:2,32014:0.833,32015:2.167,32016:1.967,32017:1.967,32018:1.933,33001:1.967,33002:1.967,33003:1.433,33004:1.433,33005:2,33006:1.433,33007:1.433,33008:2.833,33009:0.5,33010:1.433,33011:2,33012:2.033,33013:2.1,33014:1.467,33015:2.333,33016:1.367,33017:1.467,33018:1.933,34001:1.667,34002:2.3,34003:1.667,34004:1.667,34005:1.7,34006:1.667,34007:1.667,34008:1.733,34009:1.9,34010:1.667,34011:1.667,34012:1.433,34013:1.667,34014:1.9,34015:1.667,34016:1.667,34017:1.667,34018:1.667,35001:1,35002:1,35003:1,35004:1,35005:2.133,35006:1,35007:1,35008:2.133,35009:1.067,35010:2.133,35011:0.833,35012:1,35013:2.3,35014:2.3,35015:1.133,35016:1.133,35017:1.133,35018:1.933,36001:1.867,36002:1.867,36003:3.133,36004:1.867,36005:1.867,36006:1.867,36007:1.867,36008:1.167,36009:2.4,36010:1.867,36011:1.733,36012:1.867,36013:2.233,36014:2.233,36015:1.867,36016:1.867,36017:1.867,36018:2.133,36020:1.45,37001:1.967,37002:1.967,37003:1.967,37004:1.967,37005:2.3,37006:1.967,37007:2.3,37008:1.667,37009:2.167,37010:2.3,37011:1.3,37012:2.3,37013:2.167,37014:2.167,37015:2.3,37016:2.333,37017:1.967,37018:2.267,37019:1.867};
 const ASSIST_HIT_S = { 3005: 1, 3014: 1 };  // by assist character; every other assist hits 2 s in
 const HIT_AVG = (() => { const by = {}; for (const [id, s] of Object.entries(HIT_S)) { const c = Math.floor(id / 1000) % 10; (by[c] = by[c] || []).push(s); }
   const o = {}; for (const c in by) o[c] = by[c].reduce((a, b) => a + b, 0) / by[c].length; return o; })();
 function hitDelay(id) { if (HIT_S[id] != null) return HIT_S[id]; const c = COSTUME[id] && COSTUME[id].char; return HIT_AVG[c] != null ? HIT_AVG[c] : 2; }
 function hitKnown(id) { return HIT_S[id] != null; }
 function assistHitDelay(assistChar) { return ASSIST_HIT_S[assistChar] != null ? ASSIST_HIT_S[assistChar] : 2; }
-var TIMING = { kcGate: true, kcOnePer: false, kcLeadOwned: true, kcTeamOnly: true, ogap: 1.1, hit: true, stackSame: true, jitter: 0, cdCast: 1, defAdd: true, fight: 35, rand: Math.random };
+var TIMING = { kcGate: true, kcOnePer: false, kcLeadOwned: true, kcTeamOnly: true, ogap: 0.5, hit: true, stackSame: true, jitter: 0, cdCast: 1, defAdd: true, fight: 35, rand: Math.random };
 const ORDER_TIE = 1.02;  // the fight model can't tell orders apart closer than this (its error on the tested orders)
 function robustRuns(fn, k = 6, jitter = 0.15) {
   const keep = Object.assign({}, TIMING); let tot = 0, lo = Infinity, hi = 0;
@@ -1123,6 +1127,7 @@ function bossFight(st, S, agg, ctx, team, ateam) {
       else if (ready[j] > r.at) ready[j] = r.at + (ready[j] - r.at) * (1 - r.f);
     }
   };
+  let tLast = 0, bank = TM.ogap;  // the special queue's wait timer (s) just after the last fire: starts full, banks while idle
   for (let t = 0; t < FIGHT_S;) {
     while (resets.length && resets[0].at <= t + 1e-9) landReset(resets.shift());
     let p = -1;
@@ -1137,7 +1142,8 @@ function bossFight(st, S, agg, ctx, team, ateam) {
     }
     castEnd[p] = t + TM.cdCast * o.sk.castMs / 1000;
     ready[p] = t + TM.cdCast * o.sk.castMs / 1000 + o.sk.recastMs / 1000 * (1 - S.cdr);
-    t += TM.noQueue ? 0.001 : Math.max(0.05, TM.ogap + jit());
+    if (TM.noQueue) t += 0.001;
+    else { bank += t - tLast - TM.ogap; tLast = t; t += Math.max(FRAME_S, TM.ogap - bank + jit()); }  // next fire once 0.5 s is banked again, one per frame at most
     if (TM.noQueue) ready[p] += jit();
   }
   // assists
