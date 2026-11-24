@@ -2798,9 +2798,9 @@ const GROUP_ORDER = { food: ['cook', 'bfood'], candy: ['scandy', 'bcos'], kc: ['
 const CAT_INTRO = {
   food: 'Food bonuses grow every level. Cooking points level them; food big candies raise the level cap 20 levels at a time.',
   candy: 'Outfits only add damage at their bonus milestones (Lv 10, 25, 50, 70, 100) and when promoted.',
-  assist: 'Assists only level up from duplicate pulls, so this picks the 6 to equip, the order to equip them in and the keychains that go with them. Buff and debuff assists are scored by how much they raise everyone else\'s damage while they\'re up, including the outfits\' special attacks.',
+  assist: 'Obtained from the Gacha. Chooses the 6 assists to equip, their order and the keychains that go with them. Buff and debuff assists are scored by how much they raise everyone else\'s damage while they\'re up, including the outfits\' special attacks.',
   kc: 'Keychain equip bonuses increase the character\'s ATK. Star bonuses only count while the keychain\'s assist is equipped. 1 bead = 100 EXP, and leftover EXP carries into the next level.',
-  gear: 'Weapons and tools only level up from gacha copies (Lv 1–100). Every one you own gives its bonus effect, and the one weapon and one tool you equip also give their equip bonus. Enter what you own and its level; Handbook weapon & tool sets are then worked out for you.',
+  gear: 'Obtained from the Gacha. Every one you own gives its bonus effect, and the one weapon and one tool you equip also give their equip bonus. Enter what you own and its level; Handbook weapon & tool sets are then worked out for you.',
   shop: 'Which outfit to trade 10 outfit tickets for. Every outfit you don\'t own yet from the sets in the shop is scored by the damage it adds once maxed (Lv 200, promotion 5): its level bonuses and promotion count for the whole account wherever it sits, plus anything it adds by joining the team. The extra cooking coins it makes in your booths count as the food levels they buy.',
   gacha: 'Where your gems add the most damage. Each pull is scored by every prize it can give: its chance per draw times what one more copy adds (a new item, a share of its next level, or a keychain merge), plus its share of the next level of any Handbook set it belongs to. Weapons & Tools and Assists odds get better as their gacha levels up; Keychain odds never change. Everything uses what you\'ve entered in the other tabs.',
   house: 'Displayed bonuses of all 5 shelves and keychains\' equip bonuses add up per stat into one multiplier. Every item you own also provides its own bonus when it isn\'t displayed.',
@@ -3648,7 +3648,7 @@ function bannerNote(trial) {
   const df = evaluate(st, base).total > 0 ? trial.total / evaluate(st, base).total - 1 : 0;
   if (Math.abs(db - df) < 0.01) return '';
   const v = +st.stats.banner > 0 ? ` (${db < 0 ? '−' : '+'}${esc(fmtNum(Math.abs(db) * st.stats.banner))})` : '';
-  return `<div class="small muted">Total Power: <b>${fmtPct(db)}</b>${v}. Total Power also counts Damage to Non-Bosses, which a boss fight doesn't get.</div>`;
+  return `<div class="small muted">Total Power: <b>${fmtPct(db)}</b>${v}. Total Power also counts Damage to Non-Bosses.</div>`;
 }
 
 /* ======================= KEYCHAINS: one per character ======================= */
