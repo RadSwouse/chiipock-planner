@@ -1035,7 +1035,7 @@ function predictStats(stOld, stNew) {
 
 /* ---------------- battle model ---------------- */
 var NORMAL_K = 15;  // normal-attack calibration: fits 18 Little House swaps read off the battle banner (normal attacks ≈ 0.2% of boss damage)
-const BOSS_FRAC = { boss: 1, mixed: 0.5, waves: 0 };
+const BOSS_FRAC = { boss: 1 };  // 'power' (rank by Total Power) uses the banner as shown, boss and non-boss damage both
 /* Boss fights last 35 seconds, and assists' skills go off one at a time from a queue: at the start in the order
    they're equipped, then whoever is ready first (Config: 2 s queue wait between skills). This gives each assist's
    cast times in the fight, so a buff only counts for the part of the fight it's up and late slots cast less. */
@@ -1199,7 +1199,7 @@ function bossFight(st, S, agg, ctx, team, ateam) {
 function evalBattle(st, S, agg, ctx, opts) {
   opts = opts || {};
   const team = opts.team || ctx.team, ateam = opts.ateam || ctx.ateam;
-  if (st.mode === 'boss') return bossFight(st, S, agg, ctx, team, ateam);
+  if (st.mode === 'boss' || st.mode === 'power') return bossFight(st, S, agg, ctx, team, ateam);  // team and assist picks always simulate a boss fight
   const aoe = Math.max(1, +st.aoe || 1);
   const aoeN = st.mode === 'boss' ? 1 : aoe;
   let normal = 0, special = 0, assist = 0;
@@ -1383,10 +1383,10 @@ function evaluate(st2, base, opts, effects) {
   const S = effectiveStats(base.st, agg, base.agg);
   const r = evalBattle(st2, S, agg, ctx, opts);
   // .total = the banner (what upgrades are ranked by); .battle = the skill-by-skill fight model (team and assist picks)
-  r.battle = r.total; r.banner = evalBanner(st2, S, agg, ctx, false, base); r.bannerShown = evalBanner(st2, S, agg, ctx, true, base);
+  r.battle = r.total; r.banner = evalBanner(st2, S, agg, ctx, st2.mode === 'power', base); r.bannerShown = evalBanner(st2, S, agg, ctx, true, base);
   // what upgrades are ranked by: the banner (default, checked against the game) or the fight estimate, which also
   // counts skills, buffs and assists but can't be checked against an in-game number
-  r.total = st2.rankBy === 'battle' ? r.battle : r.banner;
+  r.total = st2.rankBy === 'battle' && st2.mode !== 'power' ? r.battle : r.banner;  // optimising for Total Power always ranks by it
   return r;
 }
 
@@ -2614,6 +2614,7 @@ function normalize(s) {
   o.candy = Object.assign({ have: 20, days: 3, rate: 0 }, o.candy || {});
   o.gacha = { wt: Object.assign({ lv: 1, prog: 0 }, (o.gacha || {}).wt), as: Object.assign({ lv: 1, prog: 0 }, (o.gacha || {}).as), gems: +(o.gacha || {}).gems || 0 };
   o.statsAuto = o.statsAuto || {};
+  if (o.mode !== 'boss' && o.mode !== 'power') o.mode = 'boss';  // Mixed and Mob waves were retired (Nov 24)
   o.levels = Object.assign({}, o.levels || {});
   o.snacks = Object.assign({ dango: false, honeycomb: false, creampuff: false }, o.snacks || {});
   o.weapons = o.weapons || {}; o.tools = o.tools || {}; o.weaponEq = +o.weaponEq || 0; o.toolEq = +o.toolEq || 0;
@@ -2804,7 +2805,7 @@ function renderMix() {
   const card = $('#mixcard'); if (!card) return;
   const s = summary(st, base);
   const pct = x => (x * 100).toFixed(x < 0.1 ? 1 : 0) + '%';
-  const fight = { boss: 'boss fights', mixed: 'mixed stages', waves: 'mob waves' }[st.mode];
+  const fight = 'boss fights';
   card.innerHTML = `
     <div class="row" style="justify-content:space-between"><h2>Where your damage comes from</h2>
       <span class="muted small">for ${fight}</span></div>
@@ -2838,7 +2839,7 @@ function behindList() {
 // when the upgrade itself is at hand (c.apply) its banner change is worked out separately
 const bannerMemo = new WeakMap();
 function bannerText(g, c) {
-  const b = st.rankBy === 'battle' ? 0 : (+st.stats.banner || 0);
+  const b = st.rankBy === 'battle' && st.mode !== 'power' ? 0 : (+st.stats.banner || 0);
   if (c && c.apply && b > 0) {
     if (!bannerMemo.has(c)) { const r0 = evaluate(st, base).bannerShown; bannerMemo.set(c, r0 > 0 ? evaluate(withChange(st, c.apply), base).bannerShown / r0 - 1 : g); }
     g = bannerMemo.get(c);
@@ -3452,7 +3453,7 @@ function sectionTeam() {
   const byChar = {};
   for (const id of ownedCos) (byChar[COSTUME[id].char] = byChar[COSTUME[id].char] || []).push(id);
   const team = st.team.slice(); while (team.length < 6) team.push(null);
-  const fight = st.mode === 'boss' && teamOf(st).length ? evaluate(st, base) : null;
+  const fight = (st.mode === 'boss' || st.mode === 'power') && teamOf(st).length ? evaluate(st, base) : null;
   const firesOf = id => { const sl = fight && id && fight.slots.find(s => s.id === id); return sl && sl.hits ? `special hits at ${sl.hits.map(t => Math.floor(t) + 's' + (sl.hitKnown ? '' : '*')).join(', ')}` : ''; };
   const estHit = fight && teamOf(st).some(id => !hitKnown(id));
   const cosOptions = sel => `<option value="">— empty —</option>` + [1, 2, 3, 4, 5, 6, 7].filter(c => byChar[c]).map(c =>
@@ -3979,14 +3980,14 @@ function renderSettings() {
     <section class="card stack">
       <h2>Rank upgrades by</h2>
       <div class="row" role="radiogroup" aria-label="Rank upgrades by">${[['banner', 'Total Power'], ['battle', 'Fight estimate']].map(([k, l]) =>
-        `<label class="chip" style="cursor:pointer" for="rb-${k}"><input type="radio" name="rankby" id="rb-${k}" value="${k}"${(st.rankBy || 'banner') === k ? ' checked' : ''} style="width:14px;height:14px;margin-right:6px">${l}</label>`).join('')}</div>
-      <p class="muted small" style="margin:0"><b>Total Power</b> is the game's own number on the battle screen, worked out the way the game code does: each team outfit's ATK times your crit, damage and special stats. It leaves out buffs, debuffs and assists. Total Power multiplies in both boss and non-boss damage; rankings use only the one for the fight type you pick, so a non-boss bonus can raise Total Power without ranking for boss fights. <b>Fight estimate</b> simulates the boss fight skill by skill (cooldowns, buffs, debuffs and assist attacks), so upgrades that only help an assist show up there. The game has no number to check it against. Team and assist picks always use the fight estimate.</p>
+        `<label class="chip" style="cursor:pointer" for="rb-${k}"><input type="radio" name="rankby" id="rb-${k}" value="${k}"${(st.mode === 'power' ? 'banner' : st.rankBy || 'banner') === k ? ' checked' : ''}${st.mode === 'power' && k === 'battle' ? ' disabled' : ''} style="width:14px;height:14px;margin-right:6px">${l}</label>`).join('')}</div>
+      <p class="muted small" style="margin:0"><b>Total Power</b> is the game's own number on the battle screen, worked out the way the game code does: each team outfit's ATK times your crit, damage and special stats. It leaves out buffs, debuffs and assists. Total Power multiplies in both boss and non-boss damage; when you optimize for boss fights, rankings use only the boss part, so a non-boss bonus can raise Total Power without ranking for boss fights. <b>Fight estimate</b> simulates the boss fight skill by skill (cooldowns, buffs, debuffs and assist attacks), so upgrades that only help an assist show up there. The game has no number to check it against. Team and assist picks always use the fight estimate.</p>
     </section>
     <section class="card stack">
-      <h2>What you're fighting</h2>
-      <div class="row" role="radiogroup" aria-label="Fight type">${[['boss', 'Boss fights'], ['mixed', 'Mixed'], ['waves', 'Mob waves']].map(([k, l]) =>
+      <h2>Optimize for</h2>
+      <div class="row" role="radiogroup" aria-label="Optimize for">${[['boss', 'Boss fights'], ['power', 'Total Power']].map(([k, l]) =>
         `<label class="chip" style="cursor:pointer" for="m-${k}"><input type="radio" name="mode" id="m-${k}" value="${k}"${st.mode === k ? ' checked' : ''} style="width:14px;height:14px;margin-right:6px">${l}</label>`).join('')}</div>
-      <div class="field"><label for="aoe">Enemies hit by area skills<br><span class="hint">Mob waves and mixed stages only</span></label><input type="number" id="aoe" min="1" max="10" value="${st.aoe}"></div>
+      <p class="muted small" style="margin:0"><b>Boss fights</b> ranks upgrades for damage to bosses. <b>Total Power</b> ranks them by the game's Total Power number as shown, non-boss damage included. Team and assist picks always use the boss fight.</p>
     </section>
     <section class="card stack">
       <h2>Your data</h2>
@@ -4037,9 +4038,8 @@ function renderSettings() {
     }
     st.stats[k] = n; inp.value = fmtTrunc(n); if (st.statsAuto) delete st.statsAuto[k]; changed('quiet'); toast('Saved');
   }; });
-  v.querySelectorAll('input[name=mode]').forEach(r => r.onchange = () => { st.mode = r.value; changed('quiet'); });
+  v.querySelectorAll('input[name=mode]').forEach(r => r.onchange = () => { st.mode = r.value; changed('quiet'); const pw = r.value === 'power', rb = $('#rb-battle'); if (rb) { rb.disabled = pw; const on = $('#rb-' + (pw ? 'banner' : st.rankBy || 'banner')); if (on) on.checked = true; } toast(pw ? 'Ranking by Total Power' : 'Optimizing for boss fights'); });
   v.querySelectorAll('input[name=rankby]').forEach(r => r.onchange = () => { st.rankBy = r.value; changed('quiet'); toast(r.value === 'battle' ? 'Ranking by the fight estimate' : 'Ranking by Total Power'); });
-  $('#aoe').onchange = e => { st.aoe = clampInt(e.target.value, 1, 10); changed('quiet'); };
   $('#copy-data').onclick = async () => {
     const txt = JSON.stringify(st);
     try { await navigator.clipboard.writeText(txt); toast('Backup copied'); }
