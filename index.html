@@ -2796,14 +2796,13 @@ const SINGULAR = { cook: 'cooking pt', scandy: 'small candy', bfood: 'food big c
   bhouse: 'little-house big candy', hmat: 'Strange Staff', button: 'button', kcboost: 'bead', tpt: 'Training Pt', spt: 'Super Training Pt', whistle: 'whistle candy' };
 const GROUP_ORDER = { food: ['cook', 'bfood'], candy: ['scandy', 'bcos'], kc: ['copies', 'kcboost'], house: ['button', 'bhouse'], guide: ['cook', 'views', 'memory'], home: ['hmat'], train: ['tpt', 'spt'], study: ['whistle'] };
 const CAT_INTRO = {
-  food: 'Food bonuses grow every level. Cooking points level them; food big candies raise the level cap 20 levels at a time.',
   candy: 'Outfits only add damage at their bonus milestones (Lv 10, 25, 50, 70, 100) and when promoted.',
   assist: 'Obtained from the Gacha. Chooses the 6 assists to equip, their order and the keychains that go with them. Buff and debuff assists are scored by how much they raise everyone else\'s damage while they\'re up, including the outfits\' special attacks.',
   kc: 'Keychain equip bonuses increase the character\'s ATK. Star bonuses only count while the keychain\'s assist is equipped. 1 bead = 100 EXP, and leftover EXP carries into the next level.',
   gear: 'Obtained from the Gacha. Every one you own gives its bonus effect, and the one weapon and one tool you equip also give their equip bonus. Enter what you own and its level; Handbook weapon & tool sets are then worked out for you.',
   shop: 'Which outfit to trade 10 outfit tickets for. Every outfit you don\'t own yet from the sets in the shop is scored by the damage it adds once maxed (Lv 200, promotion 5): its level bonuses and promotion count for the whole account wherever it sits, plus anything it adds by joining the team. The extra cooking coins it makes in your booths count as the food levels they buy.',
   gacha: 'Where your gems add the most damage. Each pull is scored by every prize it can give: its chance per draw times what one more copy adds (a new item, a share of its next level, or a keychain merge), plus its share of the next level of any Handbook set it belongs to. Weapons & Tools and Assists odds get better as their gacha levels up; Keychain odds never change. Everything uses what you\'ve entered in the other tabs.',
-  house: 'Displayed bonuses of all 5 shelves and keychains\' equip bonuses add up per stat into one multiplier. Every item you own also provides its own bonus when it isn\'t displayed.',
+  house: 'Displayed bonuses of all 5 shelves and keychains\' equip bonuses add up per stat into one multiplier. Every item you own also provides a bonus when it isn\'t displayed.',
   guide: 'Dishes entries level up with your foods: each level needs every dish in the set at that level, so the ranking shows which foods to raise. Home events level up from seeing one scene enough times, and sets and memories unlock once. Weapons, tools and assists come from the gacha, so they\'re shown but not ranked.',
   home: 'Every home item adds ATK per level. Ranking is based on max level Handbook bonus. Recommended layouts are based on home items that still have handbook levels.',
   train: 'Which Training node to level next, per Training Pt. Locked nodes that are worth reaching show the whole path, so a branch through coin or HP nodes can still win.',
@@ -2852,7 +2851,7 @@ function renderUpgrades() {
   const feat = FEATURES[ui.cat] ? '<div id="feature" class="stack"></div>' : '';
   v.innerHTML = `
     ${ui.cat === 'home' ? '' : feat}
-    <p class="muted small" style="margin:0">${esc(CAT_INTRO[ui.cat])}</p>
+    ${CAT_INTRO[ui.cat] ? `<p class="muted small" style="margin:0">${esc(CAT_INTRO[ui.cat])}</p>` : ''}
     ${ui.cat === 'assist' || ui.cat === 'gear' || ui.cat === 'gacha' || ui.cat === 'shop' ? '' : '<div class="stack" id="rank"></div>'}
     ${ui.cat === 'home' ? feat : ''}
     <div id="inv-wrap"></div>`;
