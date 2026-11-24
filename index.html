@@ -2798,9 +2798,9 @@ const GROUP_ORDER = { food: ['cook', 'bfood'], candy: ['scandy', 'bcos'], kc: ['
 const CAT_INTRO = {
   food: 'Food bonuses grow every level. Cooking points level them; food big candies raise the level cap 20 levels at a time.',
   candy: 'Outfits only add damage at their bonus milestones (Lv 10, 25, 50, 70, 100) and when promoted.',
-  assist: 'Assists only level up from duplicate pulls, so this picks the 6 to equip, the order to equip them in (that\'s the order they fire at the start of a fight) and the keychains that go with them. Buff and debuff assists are scored by how much they raise everyone else\'s damage while they\'re up, including the outfits\' special attacks.',
+  assist: 'Assists only level up from duplicate pulls, so this picks the 6 to equip, the order to equip them in and the keychains that go with them. Buff and debuff assists are scored by how much they raise everyone else\'s damage while they\'re up, including the outfits\' special attacks.',
   kc: 'Keychain equip bonuses increase the character\'s ATK. Star bonuses only count while the keychain\'s assist is equipped. 1 bead = 100 EXP, and leftover EXP carries into the next level.',
-  gear: 'Weapons and tools only level up from gacha copies (Lv 1–100). Every one you own gives its bonus effect, and the one weapon and one tool you equip also give their equip bonus (a tool\'s is HP). Enter what you own and its level; Handbook weapon & tool sets are then worked out for you.',
+  gear: 'Weapons and tools only level up from gacha copies (Lv 1–100). Every one you own gives its bonus effect, and the one weapon and one tool you equip also give their equip bonus. Enter what you own and its level; Handbook weapon & tool sets are then worked out for you.',
   shop: 'Which outfit to trade 10 outfit tickets for. Every outfit you don\'t own yet from the sets in the shop is scored by the damage it adds once maxed (Lv 200, promotion 5): its level bonuses and promotion count for the whole account wherever it sits, plus anything it adds by joining the team. The extra cooking coins it makes in your booths count as the food levels they buy.',
   gacha: 'Where your gems add the most damage. Each pull is scored by every prize it can give: its chance per draw times what one more copy adds (a new item, a share of its next level, or a keychain merge), plus its share of the next level of any Handbook set it belongs to. Weapons & Tools and Assists odds get better as their gacha levels up; Keychain odds never change. Everything uses what you\'ve entered in the other tabs.',
   house: 'Displayed bonuses of all 5 shelves and keychains\' equip bonuses add up per stat into one multiplier. Every item you own also provides its own bonus when it isn\'t displayed.',
@@ -3252,9 +3252,8 @@ function sectionGear() {
     return `<div class="item"><div class="nm"><b>${kind === 'weapon' ? 'Weapon' : 'Tool'}</b>${now && now.id !== id ? `<br><span class="muted">now: ${esc(now.name)}</span>` : ''}</div>
       <div class="small" style="text-align:right">${g ? `${esc(g.name)} <span class="pill st${g.star}">${g.star}★</span> <span class="muted">Lv ${gearLv(st, kind, id)}</span><br><span class="muted">equip: ${esc(SHORT[g.eq.st] || g.eq.st)} +${fmtNum(fxVal(g.eq, gearLv(st, kind, id)) * 100)}%</span>` : '<span class="muted">none owned</span>'}</div></div>`; };
   f.innerHTML = `<section class="card stack">
-      <div class="row" style="justify-content:space-between"><h2>What to equip</h2><span class="muted small">one of each</span></div>
+      <div class="row" style="justify-content:space-between"><h2>What to equip</h2></div>
       <div class="items">${row('weapon', best.weapon)}${row('tool', best.tool)}</div>
-      <p class="muted small" style="margin:0">A tool's equip bonus is HP, so the tool pick only matters through its star: some Little House display bonuses need a weapon or tool of an exact star.</p>
       ${same ? '<div class="result">You already have the best weapon and tool equipped.</div>'
         : `<div class="result"><div><b>${fmtPct(gain)}</b> total damage vs what you have equipped now${bannerNote(evaluate(trial, base))}</div>
           <div class="row"><button class="btn primary" id="use-gear">I've equipped these</button></div></div>`}
@@ -3624,7 +3623,7 @@ function sectionAssists() {
               ${sl.hits ? `<div class="act">hits at ${sl.hits.map(t => Math.floor(t) + 's').join(', ')}</div>` : ''}</div>
             <div class="gain" style="color:var(--ink)"></div></li>`; }).join('')}</ol>
         ${kcCh.length ? `<div class="small"><b>With these keychains:</b> ${kcCh.map(([ch, id]) => `${esc(charName(ch))}: ${esc(assistName(KEYCHAIN[id].assist))} ${st.keychains[id].star}★`).join(' · ')}</div>` : ''}
-        <p class="muted small" style="margin:0">Boss fights last 35 s and assist skills go off one at a time, in equip order at the start, so a buff in slot 1 is up for the whole fight. A keychain's star bonuses only count while its assist is equipped, so an assist can earn its slot through a keychain.</p>
+        <p class="muted small" style="margin:0">Boss fights last 35 s and assist skills go off one at a time, in equip order at the start. A keychain's star bonuses only count while its assist is equipped, so an assist can earn its slot through a keychain.</p>
         ${same ? '<div class="result">You already have the best 6 equipped, in the best order.</div>'
           : `<div class="result"><div><b>${fmtPct(gain)}</b> fight damage vs what you have equipped now${now.length ? '' : ' (nothing set yet)'}${bannerNote(trial)}</div>
             ${now.length ? `<div class="small muted">Now: ${now.map(id => esc(ASSIST[id].name)).join(' → ')}</div>` : ''}
