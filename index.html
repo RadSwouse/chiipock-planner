@@ -1087,8 +1087,19 @@ const HIT_AVG = (() => { const by = {}; for (const [id, s] of Object.entries(HIT
   const o = {}; for (const c in by) o[c] = by[c].reduce((a, b) => a + b, 0) / by[c].length; return o; })();
 function hitDelay(id) { if (HIT_S[id] != null) return HIT_S[id]; const c = COSTUME[id] && COSTUME[id].char; return HIT_AVG[c] != null ? HIT_AVG[c] : 2; }
 function hitKnown(id) { return HIT_S[id] != null; }
+/* Normal attacks hold specials back (game code: HuntInitializer.InitializeUnit, Unit.UpdateAttackTimer, UpdateSkillQueue).
+   Each character's normal-attack timer counts up for the length of its normal-attack animation (01011), then the attack
+   charges and winds up to its hit (the animation's attack event); a ready special can only join the special queue while
+   that timer is at 0, i.e. during the wind-up, or while normal attacks are frozen after the character's own special
+   (frozen for the length of the special's animation, 01015). The in-game Attack Speed label is just this animation:
+   Fast (Rakko) 1 s, Normal about 1.2 s, Very Slow (Shisa) 2 s. The first normal attack of a fight is staggered by
+   3 frames per slot. ATK_ANIM: [normal-attack length, normal-attack hit, special animation length] in s, from each
+   outfit's animation files; outfits not in the files use their character's most common timing (ATK_ANIM_CHAR). */
+const ATK_ANIM = {11001:[1.2667,0.4,2.8],12001:[1.2667,0.367,3],13001:[1.2333,0.533,3],14001:[1.2667,0.533,3],15001:[1.2667,0.5,2.333],16001:[1,0.5,2.7],17001:[2,0.5,4.333],21001:[1.2667,0.433,3],21002:[1.2667,0.4,2.8],22001:[1.2667,0.433,3],22002:[1.2667,0.367,3],23001:[1.6,0.367,2.7],23002:[1.6,0.367,2.7],31001:[1.2667,0.4,2.8],31002:[1.2667,0.4,2.8],31003:[1.2667,0.433,3],31004:[1.2667,0.433,2.667],31005:[1.1667,0.433,3],31006:[1.2667,0.433,3],31007:[1.2667,0.433,2.8],31008:[1.1667,0.467,2.767],31009:[1.1667,0.567,3],31010:[1.2667,0.433,3],31011:[1.1667,0.4,3],31012:[1.1667,0.433,3],31013:[1.2667,0.4,2.8],31014:[1.2667,0.633,3],31015:[1.2667,0.467,2.667],31016:[1.2667,0.467,2.8],31017:[1.2667,0.467,3],31018:[1.1667,0.467,3],31021:[1.2667,0.467,2.8],32001:[1.2667,0.367,3],32002:[1.2667,0.367,3],32003:[1.2667,0.433,3],32004:[1.2667,0.433,3],32005:[1.2667,0.633,2.967],32006:[1.2667,0.433,3],32007:[1.2667,0.433,3],32008:[1.3333,0.333,3],32009:[1.2667,0.467,3],32010:[1.2667,0.433,3],32011:[1.2667,0.367,3],32012:[1.2667,0.367,3],32013:[1.2667,0.433,3],32014:[1.2667,0.433,3],32015:[1.2667,0.467,3],32016:[1.2667,0.467,3],32017:[1.2667,0.467,3],32018:[1.1667,0.467,3],33001:[1.2333,0.5,3],33002:[1.2333,0.533,3],33003:[1.6,0.367,2.7],33004:[1.2333,0.367,2.667],33005:[1.3333,0.633,3],33006:[1.6,0.367,2.7],33007:[1.6,0.367,2.767],33008:[1.2333,0.333,3],33009:[1.2333,0.433,3],33010:[1.6,0.367,2.7],33011:[1.3333,0.5,3],33012:[1,0.367,3],33013:[1.6,0.367,3],33014:[1.2333,0.367,2.9],33015:[1.2333,0.4,2.967],33016:[1.2333,0.4,3],33017:[1.6,0.333,2.7],33018:[1.6,0.367,3],34001:[1.2667,0.5,3],34002:[1.2667,0.533,3],34003:[1.2667,0.5,3],34004:[1.2667,0.5,3],34005:[1.2667,0.533,3],34006:[1.2667,0.5,3],34007:[1.2667,0.5,3],34008:[1.2667,0.5,3],34009:[1.2667,0.533,3],34010:[1.2667,0.5,3],34011:[1.2667,0.5,3],34012:[1.2667,0.5,2.9],34013:[1.2667,0.5,3],34014:[1.2667,0.5,3],34015:[1.2667,0.533,3],34016:[1.2667,0.533,3],34017:[1.2667,0.533,3],34018:[1.2667,0.533,3],35001:[1.2667,0.5,2.333],35002:[1.2667,0.5,2.333],35003:[1.2667,0.5,2.333],35004:[1.2667,0.5,2.333],35005:[1.2667,0.767,2.8],35006:[1.2667,0.5,2.333],35007:[1.2667,0.5,2.333],35008:[1.2667,0.767,3],35009:[1.2667,0.767,3],35010:[1.2667,0.767,2.333],35011:[1.2667,0.767,2.4],35012:[1.2667,0.5,2.333],35013:[1.2667,0.767,3],35014:[2.8,2.033,3],35015:[1.2667,0.467,2.333],35016:[1.2667,0.467,2.333],35017:[1.2667,0.467,2.333],35018:[1.1667,0.4,3],36001:[1,0.5,2.7],36002:[1,0.5,3],36003:[1,0.5,3.167],36004:[1,0.5,3],36005:[1,0.3,2.833],36006:[1,0.5,3],36007:[1,0.5,2.7],36008:[1,0.4,3],36009:[1.2667,0.533,3],36010:[1,0.5,2.7],36011:[1,0.5,2.7],36012:[1,0.5,2.7],36013:[1,0.4,3],36014:[1.1,0.5,2.967],36015:[1,0.333,2.7],36016:[1,0.3,2.7],36017:[1,0.3,2.7],36018:[1.2333,0.467,3],36020:[1,0.3,2.7],37001:[2,0.5,4.333],37002:[2,0.5,3],37003:[2,0.5,3],37004:[2,0.733,3],37005:[2,1.267,3],37006:[2,0.733,3],37007:[2,0.733,3],37008:[2,0.733,3],37009:[2,0.733,3],37010:[2,0.733,3],37011:[2,0.733,3],37012:[2,0.733,3],37013:[2,0.833,3],37014:[2,1.0,3],37015:[2,1.0,3],37016:[2,1.0,3],37017:[2,1.0,4.333],37018:[2,1.0,3],37019:[2,0.733,4.333]};
+const ATK_ANIM_CHAR = { 1: [1.2667, 0.4, 2.8], 2: [1.2667, 0.433, 3], 3: [1.6, 0.367, 2.7], 4: [1.2667, 0.5, 3], 5: [1.2667, 0.5, 2.333], 6: [1, 0.5, 2.7], 7: [2, 0.733, 3] };
+function atkAnim(id) { return ATK_ANIM[id] || ATK_ANIM_CHAR[COSTUME[id] && COSTUME[id].char] || [1.2667, 0.433, 3]; }
 function assistHitDelay(assistChar) { return ASSIST_HIT_S[assistChar] != null ? ASSIST_HIT_S[assistChar] : 2; }
-var TIMING = { kcGate: true, kcOnePer: false, kcLeadOwned: true, kcTeamOnly: true, ogap: 0.5, hit: true, stackSame: true, jitter: 0, cdCast: 1, defAdd: true, fight: 35, rand: Math.random };
+var TIMING = { kcGate: true, kcOnePer: false, kcLeadOwned: true, kcTeamOnly: true, ogap: 0.5, atkGate: true, hit: true, stackSame: true, jitter: 0, cdCast: 1, defAdd: true, fight: 35, rand: Math.random };
 const ORDER_TIE = 1.02;  // the fight model can't tell orders apart closer than this (its error on the tested orders)
 function robustRuns(fn, k = 6, jitter = 0.15) {
   const keep = Object.assign({}, TIMING); let tot = 0, lo = Infinity, hi = 0;
@@ -1128,12 +1139,29 @@ function bossFight(st, S, agg, ctx, team, ateam) {
     }
   };
   let tLast = 0, bank = TM.ogap;  // the special queue's wait timer (s) just after the last fire: starts full, banks while idle
+  // normal-attack gate: a ready special joins the queue at its character's next normal-attack wind-up (see ATK_ANIM)
+  const NA = O.map(o => atkAnim(o.id)), anchor = O.map(() => 0), attacked = O.map(() => false);
+  const gateOpen = (i, t) => {
+    if (!TM.atkGate || !isFinite(t)) return t;
+    const [nat, h] = NA[i]; let s = anchor[i], first = !attacked[i];
+    if (t <= s + 1e-9) return t;  // normal attacks frozen after its own special: timer at 0
+    for (let k = 0; k < 400; k++) {
+      const charged = s + nat + (first ? 0.1 * i : 0);
+      if (t <= charged + 1e-9) return charged;  // still counting: wait for the charge
+      if (t <= charged + h + 1e-9) return t;    // winding up: free to join
+      s = charged + h; first = false;
+    }
+    return t;
+  };
+  const enq = i => gateOpen(i, ready[i]);
   for (let t = 0; t < FIGHT_S;) {
     while (resets.length && resets[0].at <= t + 1e-9) landReset(resets.shift());
-    let p = -1;
-    for (let i = 0; i < O.length; i++) if (ready[i] <= t + 1e-9 && (p < 0 || ready[i] < ready[p] - 1e-9)) p = i;
-    if (p < 0) { const m = Math.min(...ready, resets.length ? resets[0].at : Infinity); if (!isFinite(m)) break; t = Math.max(t, m); continue; }
+    let p = -1, pe = Infinity;
+    for (let i = 0; i < O.length; i++) { const e = enq(i); if (e <= t + 1e-9 && e < pe - 1e-9) { p = i; pe = e; } }
+    if (p < 0) { const m = Math.min(...O.map((_, i) => enq(i)), resets.length ? resets[0].at : Infinity); if (!isFinite(m)) break; t = Math.max(t, m); continue; }
     const o = O[p]; o.casts.push(t);
+    attacked[p] = attacked[p] || anchor[p] + NA[p][0] + 0.1 * p + NA[p][1] <= t;  // had its first normal attack land yet?
+    anchor[p] = t + NA[p][2];  // its normal attacks reset and freeze for the special's animation
     for (const e of o.sk.effects) {
       const v = lrvRow(e.lv, o.lv);
       const th = t + (TM.hit ? hitDelay(o.id) : 0);  // when its effects land
