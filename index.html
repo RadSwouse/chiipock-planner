@@ -1969,7 +1969,9 @@ function* cartesian(lists, i = 0, acc = []) {
 function orderForQueue(ids, isEnabler, dmgOf) {
   return ids.slice().sort((a, b) => (isEnabler(b) - isEnabler(a)) || (dmgOf(a) - dmgOf(b)));
 }
-function bestTeam(st, base, locked = {}) {
+const TEAM_TOPS = 10;     // teams kept from the screen for the every-order check
+const ORDER_PRUNE = 1.06; // a team whose best exact-timing order is this far under the leader skips the wobble test
+function bestTeam(st, base, locked = {}, opts = {}) {
   // one costume per character, 6 of the 7 characters
   const owned = Object.keys(st.costumes).map(Number).filter(id => COSTUME[id]);
   const byChar = {};
@@ -1995,28 +1997,44 @@ function bestTeam(st, base, locked = {}) {
     }
     lists[ch] = keep;
   }
-  let n = 0; const tops = [];  // the best few teams (any order), re-checked below in every order
+  let n = 0; const tops = [];  // the best TEAM_TOPS teams, re-checked below in every order
+  const K_TOPS = opts.tops || TEAM_TOPS;
+  // the screen scores each team in one order: your current team's character order (others after), so a team isn't
+  // judged in an order nobody would use
+  const pos = ch => { const i = cur.findIndex(id => COSTUME[id].char === ch); return i < 0 ? 9 : i; };
+  const inPattern = team => team.slice().sort((a, b) => pos(COSTUME[a].char) - pos(COSTUME[b].char));
   for (const combo of combinations(chars, 6)) {
     if (Object.keys(locked).some(ch => !combo.includes(+ch))) continue;
     for (const team of cartesian(combo.map(ch => lists[ch]))) {
-      const t = score(team); n++;
-      if (tops.length < 3 || t > tops[tops.length - 1].t) { tops.push({ t, team: team.slice() }); tops.sort((a, b) => b.t - a.t); if (tops.length > 3) tops.pop(); }
+      const t = score(inPattern(team)); n++;
+      if (tops.length < K_TOPS || t > tops[tops.length - 1].t) { tops.push({ t, team: team.slice() }); tops.sort((a, b) => b.t - a.t); if (tops.length > K_TOPS) tops.pop(); }
     }
   }
   // then every equip order of that team (specials fire in equip order at the start of a fight)
   // (averaged over a few slightly wobbled fights, so an order that only works when timing is exact loses out;
   // the 60 best orders on exact timing get the wobble test)
   const rs = team => robustRuns(() => score(team), 8);
-  const bestOrder = team => {
-    const det = []; for (const perm of permutations(team)) { det.push([score(perm), perm]); n++; }
+  // a quick look first (your order's rotations + 114 spread-out orders); all 720 only if it comes within ORDER_PRUNE
+  // of the leader (the order effect is up to ~10%, so a team's best of 120 orders sits within a few % of its best)
+  const bestOrder = (team, floor = 0) => {
+    const all = [...permutations(team)].map(p => p.slice());
+    const seen = new Set(), det = [];
+    const look = p => { const k = p.join(); if (seen.has(k)) return; seen.add(k); det.push([score(p), p]); n++; };
+    const pat = inPattern(team);
+    for (let r = 0; r < 6; r++) look(pat.slice(r).concat(pat.slice(0, r)));
+    for (let i = 0; i < all.length; i += 6) look(all[i + (i / 6) % 6]);
     det.sort((a, b) => b[0] - a[0]);
+    if (det[0][0] * 1.04 < floor) return null;
+    for (const p of all) look(p);
+    det.sort((a, b) => b[0] - a[0]);
+    if (det[0][0] < floor) return null;  // can't catch the leader even on its best timing
     // hits near the 35 s mark or a debuff's edge make some orders swing a lot between fights: among the orders the
     // model can't tell apart (within ORDER_TIE of the best average), pick the steadiest
     const runs = det.slice(0, 60).map(([, perm]) => { n++; const r = rs(perm); return { team: perm, total: r.mean, spread: r.spread }; });
     const top = Math.max(...runs.map(r => r.total));
     return runs.filter(r => r.total * ORDER_TIE >= top).sort((a, b) => a.spread - b.spread || b.total - a.total)[0];
   };
-  const now = teamOf(st);
+  const now = opts.skipNow ? [] : teamOf(st);
   const curR = now.length === 6 ? robustRuns(() => score(now), 24) : null;  // more runs: a swingy current order needs them for a fair average
   let nowBest = now.length === 6 ? bestOrder(now) : null;
   // your own order stands unless another beats it by more than the model can resolve
@@ -2024,8 +2042,9 @@ function bestTeam(st, base, locked = {}) {
   let win = nowBest;
   for (const c of tops) {
     if (nowBest && c.team.slice().sort().join() === now.slice().sort().join()) continue;
-    const bo = bestOrder(c.team); if (!win || bo.total > win.total * ORDER_TIE) win = bo;
+    const bo = bestOrder(c.team, win ? win.total / ORDER_PRUNE : 0); if (bo && (!win || bo.total > win.total * ORDER_TIE)) win = bo;
   }
+  if (!win) return { error: 'No team found.' };
   return { team: win.team, total: win.total, spread: win.spread, evaluated: n, current: curR, reorder: nowBest };
 }
 /* Best 6 assists, the order to equip them in, and each character's keychain, chosen together: a keychain's star
@@ -2327,6 +2346,43 @@ function bestDisplay(st, base) {
 }
 
 
+/* Trading Post team search (Boss Fights): an outfit's real value on the team can need a different team and order
+   (Fantasy Usagi only beat Fantasy Kurimanju once Rakko led and Shisa went last), so each outfit is checked with the
+   full best-team search, with it on the team, against your best team without it (its account-wide bonuses
+   included), with your keychains as equipped, the same as the Outfits tab's search.
+   Runs a step at a time after the quick list shows, and is remembered until something changes. */
+const tpCache = new Map();
+function tpBaseline(st, base) { const r = bestTeam(st, base); return r.error ? null : { team: r.team, total: r.total }; }
+function tpTeamCheck(st, base, B0, cId) {
+  const c = COSTUME[cId];
+  const own = withChange(st, x => { x.costumes[cId] = { lv: 200, promo: 5 }; });
+  return (fn => fn())(() => {
+    // on the bench: your best team, with this outfit's account-wide bonuses
+    const sc = s2 => evaluate(withChange(s2, x => { x.team = B0.team; }), base).battle;
+    const bench = B0.total * sc(own) / sc(st);
+    // on the team: the best team and order that include it
+    const r = bestTeam(own, base, { [c.char]: cId }, { skipNow: true });
+    const joins = !r.error && r.total > bench * ORDER_TIE;
+    return { bench: bench / B0.total - 1, team: joins ? r.team : null, spread: joins ? r.spread : 0,
+      gain: (joins ? r.total : bench) / B0.total - 1, kc: joins ? tpKeychains(st, base, own, r.team) : null };
+  });
+}
+// keychains when the searched team changes a character (shown apart, as before): who leaves, whose keychain stops
+// or starts counting, and the net with your keychains as equipped or re-equipped for the new team
+function tpKeychains(st, base, own, team) {
+  const oldChars = new Set(teamOf(st).map(id => COSTUME[id].char)), newChars = new Set(team.map(id => COSTUME[id].char));
+  const outCh = [...oldChars].find(ch => !newChars.has(ch)), inCh = [...newChars].find(ch => !oldChars.has(ch));
+  if (!outCh) return null;
+  const kcName = id => `${charName(KEYCHAIN[id].char)} × ${assistName(KEYCHAIN[id].assist)} ${st.keychains[id].star}★ Lv${st.keychains[id].lv || 1}`;
+  const eqOf = ch => Object.keys(st.keychains).find(id => st.keychains[id].eq && KEYCHAIN[id] && KEYCHAIN[id].char === ch);
+  const s2 = withChange(own, x => { x.team = team; });
+  const tA = evaluate(s2, base).total;
+  const eq = bestKeychains(s2, base);
+  const sR = withChange(s2, x => { for (const k in x.keychains) x.keychains[k].eq = !!eq[k]; });
+  const tR = evaluate(sR, base).total;
+  const out = eqOf(outCh), inn = inCh ? eqOf(inCh) : null;
+  return { reequip: tR / tA - 1, lost: out ? kcName(out) : null, gained: inn ? kcName(inn) : null, outChar: outCh, deep: true };
+}
 /* ======================= Trading Post (outfit tickets) =======================
    Each outfit you don't own yet, scored by the damage it adds once maxed (Lv200, promotion 5): its level bonuses and
    promotion apply to the whole account wherever it sits, plus what it adds if it earns a place on the team. Its booth
@@ -3117,25 +3173,44 @@ function gachaPrizeNote(p) {
 /* ======================= TRADING POST: what to buy with outfit tickets ======================= */
 function sectionShop() {
   const f = $('#feature'); if (!f) return;
-  f.innerHTML = '<div class="empty">Scoring the shop…</div>';
   clearTimeout(sectionShop.t);
+  const sets = shopSets(st);
+  const deep = st.mode !== 'power';
+  const key = JSON.stringify([st, sets]);
+  let entry = tpCache.get(key);
+  if (!entry) f.innerHTML = '<div class="empty">Scoring the shop…</div>';
   sectionShop.t = setTimeout(() => {
     if (!$('#feature') || ui.cat !== 'shop') return;
-    const sets = shopSets(st);
     // every outfit set with something you don't own (the shop rotates two re-run sets a month)
     const avail = Object.keys(D.sets).map(Number).filter(k => k !== 1 && D.costumes.some(c => c.set === k && !st.costumes[c.id]));
     const chips = avail.map(k => `<button class="chip" data-shopset="${k}" aria-pressed="${sets.includes(k)}">${esc(D.sets[k])}</button>`).join('');
-    const R = sets.length ? tradingPost(st, base, sets) : { rows: [], inc0: cookIncome(st), fillDays: Infinity };
+    if (!entry) {
+      entry = { R: sets.length ? tradingPost(st, base, sets) : { rows: [], inc0: cookIncome(st), fillDays: Infinity }, rows: {} };
+      tpCache.clear(); tpCache.set(key, entry);
+    }
+    // Boss Fights: each outfit's full team search, filled in a step at a time (below)
+    const R = { ...entry.R, rows: entry.R.rows.map(r => {
+      const d = deep && entry.rows[r.id]; if (!d) return r;
+      const gainTeam = d.gain; return { ...r, gainTeam, gainMax: d.bench, deep: d, kc: d.kc, score: (1 + gainTeam) * (1 + r.coinGain) - 1 };
+    }) };
+    R.rows.sort((a, b) => b.score - a.score);
+    const left = deep ? R.rows.filter(r => !entry.rows[r.id]).length : 0;
     const top = R.rows.length ? Math.max(...R.rows.map(r => r.score)) : 1;
     const nameOf = id => costumeName(COSTUME[id]);
     const rows = R.rows.map((r, i) => {
-      const team = r.replaces
+      const team = r.deep
+        ? (r.deep.team
+          ? `Best team with it: ${r.deep.team.map(id => esc(nameOf(id))).join(' › ')}: <b>${fmtPct(r.gainTeam)}</b> in all (vs ${fmtPct(r.deep.bench)} on the bench)`
+          : 'Stays on the bench: no team with it beats your best team, so all of its damage comes from its account-wide bonuses')
+        : deep ? '<span class="muted">Checking the best team with it…</span>'
+        : r.replaces
         ? `Joins your team in place of ${esc(nameOf(r.replaces))}: <b>${fmtPct(r.gainTeam)}</b> in all (vs ${fmtPct(r.gainMax)} on the bench)`
         : 'Stays on the bench: your current six outfits deal more, so all of its damage comes from its account-wide bonuses';
       const coin = r.coinsPerMin > 0
         ? `Booths: +${gnum(Math.round(r.coinsPerMin))} coins/min (${fmtPct(r.coinsPct)}), about ${gnum(Math.round(r.coinsPerMin * 720))} a day collected → food levels worth <b>${fmtPct(r.coinGain)}</b> over 30 days`
         : 'Booths: no better than the outfits already cooking';
-      const kc = r.kc ? `<span style="color:var(--pink)">⚠ Keychains (not in the score): ${esc(charName(r.kc.outChar))} leaves the team${r.kc.lost ? `, so ${esc(r.kc.lost)} stops counting (${fmtPct(r.kc.loss)})` : ''}${r.kc.gained ? `; ${esc(r.kc.gained)} starts counting` : ''}. Net ${fmtPct(r.kc.now)}${Math.abs(r.kc.reequip - r.kc.now) > 0.0005 ? `, or ${fmtPct(r.kc.reequip)} after re-equipping the best keychains` : ''}.${(1 + r.gainTeam) * (1 + Math.max(r.kc.now, r.kc.reequip)) < 1 + r.gainMax ? ` Counting keychains, keeping it on the bench is better (${fmtPct(r.gainMax)} vs ${fmtPct((1 + r.gainTeam) * (1 + Math.max(r.kc.now, r.kc.reequip)) - 1)}).` : ''}</span>` : '';
+      const kc = r.kc && r.kc.deep ? `<span style="color:var(--pink)">⚠ Keychains: ${esc(charName(r.kc.outChar))} leaves the team${r.kc.lost ? `, so ${esc(r.kc.lost)} stops counting` : ''}${r.kc.gained ? `; ${esc(r.kc.gained)} starts counting` : ''} (already in the score)${r.kc.reequip > 0.0005 ? `. Re-equipping the best keychains for this team adds ${fmtPct(r.kc.reequip)} more` : ''}.</span>`
+        : r.kc ? `<span style="color:var(--pink)">⚠ Keychains (not in the score): ${esc(charName(r.kc.outChar))} leaves the team${r.kc.lost ? `, so ${esc(r.kc.lost)} stops counting (${fmtPct(r.kc.loss)})` : ''}${r.kc.gained ? `; ${esc(r.kc.gained)} starts counting` : ''}. Net ${fmtPct(r.kc.now)}${Math.abs(r.kc.reequip - r.kc.now) > 0.0005 ? `, or ${fmtPct(r.kc.reequip)} after re-equipping the best keychains` : ''}.${(1 + r.gainTeam) * (1 + Math.max(r.kc.now, r.kc.reequip)) < 1 + r.gainMax ? ` Counting keychains, keeping it on the bench is better (${fmtPct(r.gainMax)} vs ${fmtPct((1 + r.gainTeam) * (1 + Math.max(r.kc.now, r.kc.reequip)) - 1)}).` : ''}</span>` : '';
       return `<li class="up${i === 0 ? ' top' : ''}">
         <span class="pos">${i + 1}</span>
         <div class="what"><div class="name">${esc(r.name)} <span class="pill">${esc(BOOTH_DISH[r.cook] || '')}</span></div><div class="act">At Lv 100: ${fmtPct(r.gain100)} · at Lv 200, promotion 5: ${fmtPct(r.gainTeam)}</div></div>
@@ -3149,7 +3224,7 @@ function sectionShop() {
     $('#feature').innerHTML = `<section class="card stack"><h2>In the shop now</h2>
         <div class="row" style="flex-wrap:wrap;gap:6px">${chips}</div>
         <p class="muted small" style="margin:0">Tap the two sets the Trading Post is selling this month. Outfits you already own can't be bought, so they're left out.</p></section>
-      <section class="card stack"><div class="row" style="justify-content:space-between"><h2>Best outfit for 10 tickets</h2><span class="muted small">damage once maxed</span></div>
+      <section class="card stack"><div class="row" style="justify-content:space-between"><h2>Best outfit for 10 tickets</h2><span class="muted small">${left ? `checking teams… ${R.rows.length - left} of ${R.rows.length}` : 'damage once maxed'}</span></div>
         ${R.rows.length ? `<ol class="rank">${rows}</ol>` : '<div class="empty">Pick the sets in the shop above.</div>'}
         <p class="muted small" style="margin:0">Max level costs about ${gnum(smallCandies(st, expCost(4, 1, 200)) || 0)} small candies and 200 outfit big candies; the Lv 100 figure is the nearer goal. Promotion adds the same ATK to every 6★ outfit, so the order comes from each outfit's level bonuses and whether it makes your team. Coins: your booths make ${gnum(Math.round(R.inc0))}/min now; an outfit's extra is counted as 12 hours collected a day for 30 days, spent on the food levels that add the most damage.${fill} These outfits' level bonuses come from game data and haven't been checked in the game yet.</p></section>`;
     $('#feature').querySelectorAll('[data-shopset]').forEach(b => b.onclick = () => {
@@ -3157,7 +3232,19 @@ function sectionShop() {
       st.shop = { sets: cur.includes(k) ? cur.filter(x => x !== k) : cur.concat(k) };
       scheduleSave(); sectionShop();
     });
-  }, 30);
+    // next outfit's team search, then redraw (stops if you leave the tab or anything changes)
+    if (left) {
+      const tok = sectionShop.tok = {};
+      setTimeout(() => {
+        if (sectionShop.tok !== tok || ui.cat !== 'shop' || !$('#feature') || tpCache.get(key) !== entry) return;
+        if (entry.B0 === undefined) entry.B0 = tpBaseline(st, base);
+        const next = R.rows.find(r => !entry.rows[r.id]);
+        if (next) entry.rows[next.id] = entry.B0 ? tpTeamCheck(st, base, entry.B0, next.id)
+          : { gain: next.gainTeam, bench: next.gainMax, team: null, kc: next.kc };
+        if (sectionShop.tok === tok) sectionShop();
+      }, 20);
+    }
+  }, entry ? 0 : 30);
 }
 function sectionGacha() {
   const f = $('#feature'); if (!f) return;
