@@ -611,8 +611,7 @@ const SHORT = {
 };
 // Default stacking: "+X%" bonuses multiply by (1+X) except crit stats, which add (see Settings).
 // Default stacking: Attack bonuses multiply (the datamine's ×10^20+ collection multiplier proves it).
-// Damage-rate stats default to adding within the stat: that is what makes "raise whatever is furthest behind"
-// the winning pattern players observe. Each can be switched under Stats → How bonuses stack.
+// Each can be switched under Stats → How bonuses stack.
 // 'mul' = the game's rule above (adds within a source type, multiplies across types); 'add' = everything adds
 const DEFAULT_STACK = { CriticalDamage: 'mul', CriticalRate: 'add', NormalAttackDamageRate: 'mul',
   UniqueSkillDamageRate: 'mul', SkillDamageRate: 'mul', BossDamageRate: 'mul', MobDamageRate: 'mul', AssistSkillDamage: 'mul' };
@@ -2541,20 +2540,6 @@ function boothPlan(st) {
 }
 
 /* ---------------- breakdown for display ---------------- */
-/* Which stat is furthest behind: damage gain from +10 points (as the status screen counts them) on each stat.
-   Uses the status-screen totals, which already include study, training, gear and everything else. */
-const STAT_PROBE = [['cd', 'Critical Damage'], ['nr', 'Normal Attack Damage'], ['ur', 'Special Attack Damage'],
-  ['sr', 'Special Attack & Assist Damage'], ['boss', 'VS Boss Damage'], ['mob', 'Damage to Non-Bosses'], ['cr', 'Critical Rate']];
-function statValues(st) {
-  const b0 = makeBaseline(st), t0 = evaluate(st, b0).total;
-  const out = [];
-  for (const [k, label] of STAT_PROBE) {
-    const st2 = withChange(st, x => { x.stats[k] = (+x.stats[k] || 0) + (k === 'cr' ? 1 : 10); });
-    const t = evaluate(st2, makeBaseline(st2)).total;
-    out.push({ k, label, step: k === 'cr' ? 1 : 10, gain: t0 > 0 ? t / t0 - 1 : 0, now: +st.stats[k] || 0 });
-  }
-  return out.sort((a, b) => b.gain - a.gain);
-}
 /* ---------------- gacha: where gems do the most ----------------
    The Weapons & Tools and Assists gachas level up with draws (better odds at higher levels); the Keychain gacha's
    odds never change. A pull is worth Σ over its prizes of (chance per draw) × (what one more copy of that prize adds
@@ -2689,7 +2674,7 @@ if (typeof module !== 'undefined') module.exports = {
   fmtNum, parseNum, fmtPct, group, fxVal, lrvRow, expCost, blankState, context, buildEffects, aggregate,
   effectiveStats, evaluate, makeBaseline, tradingPost, shopSets, candidates, efficiency, bestTeam, bestAssists, bestKeychains, keychainChallengers, bestGear, GEAR, summary,
   boothPlan, boothSettings, slotRate, BOOTH_DISH, STARS, nodeCost, guideLevel, guideMissing, homeLv, sceneOpen, homeName, HOME, COSTUME, ASSIST, FOOD, TREASURE, KEYCHAIN, GUIDE, STAR, STATS, SHORT, RES, charName, assistName, costumeName,
-  condText, assistStar, withChange, predictStats, candyStrength, candyTrainBonus, TIMING, gachaPool, gachaGains, gachaValue, gachaPlan, gachaLevelNeed, gachaMax, GACHA_NAMES, GACHA_DRAWS, clone, teamOf, assistTeamOf, DEFAULT_STACK, stackMode, statValues, bestDisplay,
+  condText, assistStar, withChange, predictStats, candyStrength, candyTrainBonus, TIMING, gachaPool, gachaGains, gachaValue, gachaPlan, gachaLevelNeed, gachaMax, GACHA_NAMES, GACHA_DRAWS, clone, teamOf, assistTeamOf, DEFAULT_STACK, stackMode, bestDisplay,
 };
 
 </script>
@@ -2938,20 +2923,8 @@ function renderMix() {
       <span>Avg crit multiplier ×${fmtNum(s.crit.ce)}</span></div>
     ${teamOf(st).length < 6 ? '<p class="small" style="margin:0;color:var(--pink)">Your team has fewer than 6 outfits. Set it under Outfits for accurate rankings.</p>' : ''}
     ${['nr', 'ur', 'sr', 'boss', 'mob'].every(k => +st.stats[k] === 100) ? '<p class="small" style="margin:0;color:var(--pink)">Your status-screen numbers are still the defaults. Rankings depend on them heavily, so enter them below first.</p>' : ''}
-    <div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:10px">
-      <div class="row" style="justify-content:space-between"><h3>Furthest-behind stats</h3><span class="muted small">damage from one more step of each</span></div>
-      ${behindList()}
-      <p class="muted small" style="margin:0">Uses your status-screen totals, which already include study, training, gear and everything else.</p>
-    </div>`;
+`;
   card.querySelectorAll('[data-go]').forEach(a => a.onclick = e => { e.preventDefault(); showTab(a.dataset.go); });
-}
-function behindList() {
-  const vals = statValues(st).filter(v => !(v.k === 'asd' && summary(st, base).assist < 0.005));
-  const top = Math.max(...vals.map(v => v.gain), 1e-12);
-  return `<ol class="rank" style="gap:4px">${vals.slice(0, 4).map((v, i) => `<li class="row" style="gap:10px;flex-wrap:nowrap">
-      <span style="flex:1;min-width:0" class="small"><b>${esc(v.label)}</b> <span class="muted">+${v.step}% on ${fmtNum(v.now)}%</span></span>
-      <span style="width:30%;height:6px;background:var(--chip);border-radius:9px;overflow:hidden"><b style="display:block;height:100%;width:${Math.max(3, 100 * v.gain / top)}%;background:${i ? 'var(--muted)' : 'var(--mint)'}"></b></span>
-      <span class="num small" style="width:4.8em;text-align:right;color:${i ? 'var(--ink)' : 'var(--mint)'}">${fmtPct(v.gain)}</span></li>`).join('')}</ol>`;
 }
 
 // the battle screen's damage banner rises by the same % as the planner's total damage (checked: Somen +1.22% vs
