@@ -1624,7 +1624,7 @@ function dishSetCandidates(st, base, bt, income) {
 const MILESTONES = [10, 25, 50, 70, 100];
 /* Outfit missions (Mission table, CostumeEnhance category): each of the 7 Normal outfits gives 10 Strange Staffs on
    reaching Lv 150 and 10 more at Lv 200. A step that reaches one (and the outfit is still below it, so it's unclaimed)
-   counts what those Staffs buy: the Little House ranking's best picks for that many Staffs. Other outfits' missions
+   counts what those Staffs buy: the Home tab ranking's best picks for that many Staffs. Other outfits' missions
    give gems and profile items, which aren't counted. */
 const OUTFIT_STAFFS = { set: 1, lvs: [150, 200], n: 10 };
 const missionStaffs = (c, from, to) => c.set === OUTFIT_STAFFS.set ? OUTFIT_STAFFS.lvs.filter(l => l > from && l <= to) : [];
