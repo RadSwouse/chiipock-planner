@@ -2935,6 +2935,31 @@ function renderUpgrades() {
 }
 function refreshFeature() { if (ui.tab === 'up' && FEATURES[ui.cat] && ui.cat !== 'candy') FEATURES[ui.cat](); }
 
+/* Strongest boss you can beat: one full fight's boss damage. The planner's fight value is relative to your own ATK, so
+   damage = K × fight value × ATK, with K from the Nov 24 recording: the planner's best team took 1,346w off a 1.39x boss
+   in a full fight at normal speed, when fight value × ATK was 3.9749e70. Checked since: 7.06x and 7.53x bosses beaten
+   with an estimate of 7.58x. Fights vary about ±1%; 2× speed cost ~16% in the recordings. */
+const BOSS_K = 1.346e72 / 3.9749e70, BOSS_X2 = 0.84;
+const BOSS_HP_KEY = 'chiipoke-next-boss';
+function strongestBoss() {
+  const s2 = st.mode === 'boss' ? st : withChange(st, x => { x.mode = 'boss'; });
+  if (teamOf(s2).length < 6 || !(+st.stats.atk > 0)) return '';
+  const hp = BOSS_K * robustRuns(() => evaluate(s2, base).battle, 16).mean * (+st.stats.atk);
+  let next = ''; try { next = localStorage.getItem(BOSS_HP_KEY) || ''; } catch (e) {}
+  const need = v => { const x = parseNum(v); if (!(x > 0)) return '';
+    const r = x / hp - 1;
+    return r <= -0.02 ? `You should beat it, with about ${fmtNum(-r * 100)}% to spare.`
+      : r < 0.01 ? `Right at your limit: it can go either way, so expect a few tries. About +${fmtNum(Math.max(r + 0.01, 0.01) * 100)}% more damage makes it reliable.`
+      : `You need about <b>+${fmtNum(r * 100)}%</b> more boss damage (aim for +${fmtNum((r + 0.01) * 100)}% to be safe).`; };
+  return `<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:10px">
+      <div class="row" style="justify-content:space-between"><h3>Strongest boss you can beat</h3><span class="muted small">full fight, normal speed</span></div>
+      <p style="margin:0"><b style="font-size:1.25rem">${fmtNum(hp)}</b> boss HP <span class="muted small">(about ${fmtNum(hp * 0.99)}–${fmtNum(hp * 1.01)}, as fights vary)</span></p>
+      <p class="muted small" style="margin:0">With your current team and assists. At 2× speed it's about ${fmtNum(hp * BOSS_X2)}, so leave 2× off for close fights.</p>
+      <div class="row" style="gap:8px;align-items:center"><label for="next-boss" class="small">Next boss's HP</label>
+        <input id="next-boss" inputmode="text" placeholder="e.g. 8.09x" value="${esc(next)}" style="width:7.5em"></div>
+      <p class="small" id="next-boss-out" style="margin:0">${need(next)}</p>
+    </div>`;
+}
 function renderMix() {
   const card = $('#mixcard'); if (!card) return;
   const s = summary(st, base);
@@ -2950,9 +2975,15 @@ function renderMix() {
       <span><i style="background:var(--sun)"></i>Assists ${pct(s.assist)}</span>
       <span>Avg crit multiplier ×${fmtNum(s.crit.ce)}</span></div>
     ${teamOf(st).length < 6 ? '<p class="small" style="margin:0;color:var(--pink)">Your team has fewer than 6 outfits. Set it under Outfits for accurate rankings.</p>' : ''}
+    ${strongestBoss()}
     ${['nr', 'ur', 'sr', 'boss', 'mob'].every(k => +st.stats[k] === 100) ? '<p class="small" style="margin:0;color:var(--pink)">Your status-screen numbers are still the defaults. Rankings depend on them heavily, so enter them below first.</p>' : ''}
 `;
   card.querySelectorAll('[data-go]').forEach(a => a.onclick = e => { e.preventDefault(); showTab(a.dataset.go); });
+  const nb = card.querySelector('#next-boss');
+  if (nb) nb.oninput = () => {
+    try { localStorage.setItem(BOSS_HP_KEY, nb.value); } catch (e) {}
+    const out = card.querySelector('#next-boss-out'); if (out) { const tmp = document.createElement('div'); tmp.innerHTML = strongestBoss(); const o2 = tmp.querySelector('#next-boss-out'); out.innerHTML = o2 ? o2.innerHTML : ''; }
+  };
 }
 
 // the battle screen's damage banner rises by the same % as the planner's total damage (checked: Somen +1.22% vs
