@@ -1622,6 +1622,32 @@ function dishSetCandidates(st, base, bt, income) {
 }
 
 const MILESTONES = [10, 25, 50, 70, 100];
+/* Outfit missions (Mission table, CostumeEnhance category): each of the 7 Normal outfits gives 10 Strange Staffs on
+   reaching Lv 150 and 10 more at Lv 200. A step that reaches one (and the outfit is still below it, so it's unclaimed)
+   counts what those Staffs buy: the Little House ranking's best picks for that many Staffs. Other outfits' missions
+   give gems and profile items, which aren't counted. */
+const OUTFIT_STAFFS = { set: 1, lvs: [150, 200], n: 10 };
+const missionStaffs = (c, from, to) => c.set === OUTFIT_STAFFS.set ? OUTFIT_STAFFS.lvs.filter(l => l > from && l <= to) : [];
+const staffMemo = new Map();
+function staffGain(st, base, n) {
+  const key = n + '|' + JSON.stringify(st);
+  if (staffMemo.has(key)) return staffMemo.get(key);
+  let s = st, left = n, g = 1;
+  for (;;) {
+    const cs = homeCandidates(s, base, evaluate(s, base).total).filter(c => c.cost && c.cost.n <= left && c.gain > 0);
+    if (!cs.length) break;
+    cs.sort((a, b) => efficiency(b) - efficiency(a));
+    g *= 1 + cs[0].gain; s = withChange(s, cs[0].apply); left -= cs[0].cost.n;
+  }
+  if (staffMemo.size > 40) staffMemo.clear();
+  staffMemo.set(key, g - 1); return g - 1;
+}
+function withStaffs(st, base, c, from, to, gain, note) {
+  const lvs = missionStaffs(c, from, to); if (!lvs.length) return { gain, note };
+  const n = lvs.length * OUTFIT_STAFFS.n, sg = staffGain(st, base, n);
+  return { gain: (1 + gain) * (1 + sg) - 1,
+    note: (note ? note + ' · ' : '') + `+${n} Strange Staffs from its Lv ${lvs.join(' & ')} outfit mission${lvs.length > 1 ? 's' : ''} (≈ ${fmtPct(sg)}, included)` };
+}
 function costumeCandidates(st, base, bt) {
   const out = [];
   for (const c of D.costumes) {
@@ -1632,9 +1658,10 @@ function costumeCandidates(st, base, bt) {
     if (next && next <= cap) {
       const ap = x => { x.costumes[c.id].lv = next; }, st2 = withChange(st, ap);
       const tier = c.tiers.find(t => t.lv === next);
+      const w = withStaffs(st, base, c, lv, next, gainOf(base, bt, st2),
+        tier ? `unlocks ${SHORT[tier.fx.st] || tier.fx.st} +${fmtNum(fxVal(tier.fx, next) * 100)}%` : (next === 200 ? 'counts toward Lv200 outfit bonuses' : ''));
       out.push({ apply: ap, cat: 'candy', key: 'cos:' + c.id + ':lv', name: costumeName(c), char: c.char, action: `Lv ${lv} → ${next}`,
-        gain: gainOf(base, bt, st2), cost: { res: 'scandy', n: smallCandies(st, expCost(c.expGroup, lv, next)) },
-        note: tier ? `unlocks ${SHORT[tier.fx.st] || tier.fx.st} +${fmtNum(fxVal(tier.fx, next) * 100)}%` : (next === 200 ? 'counts toward Lv200 outfit bonuses' : '') });
+        gain: w.gain, cost: { res: 'scandy', n: smallCandies(st, expCost(c.expGroup, lv, next)) }, note: w.note });
     }
     if (promo < 5) {
       // Ranked from the moment the outfit reaches its cap: promotion bonus + the 20 levels it opens up,
@@ -1642,10 +1669,11 @@ function costumeCandidates(st, base, bt) {
       const atCap = lv >= cap ? st : withChange(st, x => { x.costumes[c.id].lv = cap; });
       const atCapT = lv >= cap ? bt : evaluate(atCap, base).total;
       const st2 = withChange(atCap, x => { x.costumes[c.id].promo = promo + 1; x.costumes[c.id].lv = cap + 20; });
+      const w = withStaffs(st, base, c, lv, cap + 20, gainOf(base, atCapT, st2),
+        (lv < cap ? `reach Lv ${cap} first (${fmtNum(smallCandies(st, expCost(c.expGroup, lv, cap)) || 0)} small candies) · ` : '')
+          + `then ${fmtNum(smallCandies(st, expCost(c.expGroup, cap, cap + 20)) || 0)} small candies to fill the new levels`);
       out.push({ apply: x => { x.costumes[c.id].promo = promo + 1; }, cat: 'candy', key: 'cos:' + c.id + ':promo', name: costumeName(c), char: c.char, action: `Promote ${promo} → ${promo + 1} (cap ${cap} → ${cap + 20})`,
-        gain: gainOf(base, atCapT, st2), cost: { res: 'bcos', n: D.costumePromo[promo] },
-        note: (lv < cap ? `reach Lv ${cap} first (${fmtNum(smallCandies(st, expCost(c.expGroup, lv, cap)) || 0)} small candies) · ` : '')
-          + `then ${fmtNum(smallCandies(st, expCost(c.expGroup, cap, cap + 20)) || 0)} small candies to fill the new levels` });
+        gain: w.gain, cost: { res: 'bcos', n: D.costumePromo[promo] }, note: w.note });
     }
   }
   return out;
