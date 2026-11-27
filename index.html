@@ -1021,7 +1021,10 @@ function effectiveStats(st, agg, base) {
    in Stats wins; otherwise it comes from your Training levels. */
 function candyTrainBonus(st) { let v = 0; for (const n of D.training) if (n.fx && n.fx.st === 'CostumeExperience') v += fxVal(n.fx, +st.training[n.id] || 0); return v; }
 function candyStrength(st) { return +st.stats.candy > 0 ? st.stats.candy / 100 : 1 + candyTrainBonus(st); }
-const smallCandies = (st, exp) => exp == null ? null : Math.ceil(exp / candyStrength(st));
+// one small candy is 50 outfit EXP before Small Candy Strength (checked Nov 26: at 370% each candy gave 185 EXP;
+// 5 candies took Normal Usagi Lv 140 → 141 (918 EXP) with 7 left over, and Lv 140 → 160 used about 140 candies)
+const SMALL_CANDY_EXP = 50;
+const smallCandies = (st, exp) => exp == null ? null : Math.ceil(exp / Math.floor(SMALL_CANDY_EXP * candyStrength(st) + 1e-9));
 function predictStats(stOld, stNew) {
   const b = makeBaseline(stOld);
   const ctx = context(stNew), agg = aggregate(buildEffects(stNew, ctx), ctx, stNew);
