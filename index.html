@@ -1773,8 +1773,11 @@ function sceneOpen(g, st) { return g.kind !== 'HomeEvent' || homeLv(st, g.item) 
      summed over items; ties go to the lower character id. Ranks 1–3 weigh 40/30/20, everyone else 5
    - placed items roll one by one in a fresh random order; each open scene weighs 10 + its characters' weights, plus a
      5 "nothing" weight; a scene is skipped when one of its characters is already in an earlier item's scene
-   The layouts are chosen greedily (both backgrounds at once, so an item that fits either goes where it helps more),
-   scoring each layout by Σ chance per refresh × views still needed, from a seeded simulation. */
+   Only the background you're viewing rolls, so each background is searched on its own and the faster one is the
+   pick. Every layout of the scenes that can still level is simulated (each item where it fits, large items in large
+   spots), and its speed is Σ chance per refresh × what one view is worth: the gain of the scene's next Handbook
+   level (the rankings' measure, as a log) spread over the views that level needs. So the pick follows each scene's
+   next level and changes as soon as a level-up is entered under Handbook. */
 const LAYOUT_BG = { Outdoor: { name: 'Outdoors (large area)', reg: 5, big: 2 }, Indoor: { name: 'Indoors', reg: 2, big: 0 } };
 const SCENE_RANK_W = [40, 30, 20], SCENE_OTHER_W = 5, SCENE_MISS_W = 5, SCENE_BASE_W = 10;
 const SCENE_OWNED = [1001, 1002, 1003, 1004, 1005, 1006, 1007]; for (let i = 3001; i <= 3023; i++) SCENE_OWNED.push(i);
@@ -1819,34 +1822,38 @@ function sceneSim(st, items, n) {  // items: [{h}] placed together → chance pe
   return hits.map(h => h / n);
 }
 const layoutMemo = { key: null, val: null };
-function homeLayouts(st) {
+const LAYOUT_MAX_ITEMS = 10;  // per background, the scenes worth most per view; caps the search at 2^10 layouts
+function sceneWorth(st, base, bt, t) {
+  const lv = guideLevel(t.g, st), need = D.sceneViews[lv + 1] - (D.sceneViews[lv] || 0);
+  const g = evaluate(withChange(st, x => { x.guide[t.g.id] = lv + 1; }), base).total / bt - 1;
+  return { lv, next: lv + 1, need, gain: g, w: need > 0 ? Math.log1p(Math.max(0, g)) / need : 0 };
+}
+function homeLayouts(st, base) {
   const { targets, locked } = sceneTargets(st);
-  const key = JSON.stringify([targets.map(t => [t.g.id, t.rem, homeLv(st, t.h.id)])]);
+  const bt = evaluate(st, base).total;
+  const key = JSON.stringify([targets.map(t => [t.g.id, guideLevel(t.g, st), homeLv(st, t.h.id)]), bt]);
   if (layoutMemo.key === key) return Object.assign({ locked }, layoutMemo.val);
-  const N = 3000;
-  const fits = (bg, t) => t.h.bg === 'All' || t.h.bg === bg;
-  const room = (bg, set, t) => { const B = LAYOUT_BG[bg], big = set.filter(x => x.h.big).length; return t.h.big ? big < B.big : set.length - big < B.reg; };
-  const score = set => set.length ? sceneSim(st, set, N).reduce((a, p, i) => a + p * set[i].rem, 0) : 0;
-  const lay = { Outdoor: [], Indoor: [] }, cur = { Outdoor: 0, Indoor: 0 };
-  let left = targets.slice();
-  for (;;) {
-    let best = null;
-    for (const t of left) for (const bg of ['Outdoor', 'Indoor']) {
-      if (!fits(bg, t) || !room(bg, lay[bg], t)) continue;
-      const s = score(lay[bg].concat([t])), gain = s - cur[bg];
-      if (gain > 1e-9 && (!best || gain > best.gain)) best = { t, bg, s, gain };
-    }
-    if (!best) break;
-    lay[best.bg].push(best.t); cur[best.bg] = best.s; left = left.filter(x => x !== best.t);
-  }
-  const val = { bgs: [] };
+  // scenes whose next level is worth under 0.01% (bonuses the rankings barely count) would only crowd the others
+  const ts = targets.map(t => Object.assign({}, t, sceneWorth(st, base, bt, t))).filter(t => t.gain > 1e-4);
+  const speed = (set, n) => { const ps = set.length ? sceneSim(st, set, n) : []; return { ps, v: ps.reduce((a, p, i) => a + p * set[i].w, 0) }; };
+  const bgs = [];
   for (const bg of ['Outdoor', 'Indoor']) {
-    if (!lay[bg].length) continue;
-    const ps = sceneSim(st, lay[bg], 20000);
-    const rows = lay[bg].map((t, i) => ({ t, p: ps[i], refreshes: ps[i] > 0 ? Math.ceil(t.rem / ps[i]) : Infinity }));
-    val.bgs.push({ bg, name: LAYOUT_BG[bg].name, rows, refreshes: Math.max(...rows.map(r => r.refreshes)) });
+    const B = LAYOUT_BG[bg];
+    const pool = ts.filter(t => t.h.bg === 'All' || t.h.bg === bg).sort((a, b) => b.w - a.w).slice(0, LAYOUT_MAX_ITEMS);
+    let best = null;
+    for (let m = 1; m < 1 << pool.length; m++) {
+      const set = pool.filter((_, i) => m >> i & 1), big = set.filter(t => t.h.big).length;
+      if (big > B.big || set.length - big > B.reg) continue;
+      const v = speed(set, 3000).v;
+      if (!best || v > best.v) best = { set, v };
+    }
+    if (!best) continue;
+    const fin = speed(best.set, 20000);
+    const rows = best.set.map((t, i) => ({ t, p: fin.ps[i], refreshes: fin.ps[i] > 0 ? Math.ceil(t.need / fin.ps[i]) : Infinity }));
+    bgs.push({ bg, name: B.name, rows, speed: fin.v });
   }
-  val.unplaced = left;
+  bgs.sort((a, b) => b.speed - a.speed);
+  const val = { bgs };
   layoutMemo.key = key; layoutMemo.val = val;
   return Object.assign({ locked }, val);
 }
@@ -2887,24 +2894,24 @@ const CAT_INTRO = {
 const FEATURES = { shop: sectionShop, gacha: sectionGacha, candy: sectionTeam, assist: sectionAssists, gear: sectionGear, kc: sectionKeychains, house: sectionHouse,
   train: () => sectionTree('training'), study: () => sectionTree('study'), home: sectionHome };
 
-/* Recommended home layouts for the Handbook scenes that still have levels (engine: homeLayouts) */
+/* Recommended home layout: the faster background to view, and its layout (engine: homeLayouts) */
 function sectionHome() {
   const f = $('#feature'); if (!f) return;
-  const L = homeLayouts(st);
+  const L = homeLayouts(st, base);
+  const perHour = v => fmtPct(Math.expm1(v * 12));  // 12 refreshes an hour
   const hrs = n => { const h = n * 5 / 60; return h < 1 ? `${Math.round(n * 5)} min` : `${fmtNum(Math.round(h * 10) / 10)} h`; };
-  const body = L.bgs.map(b => `<div class="stack" style="gap:6px">
-      <div class="row" style="justify-content:space-between"><h3>${esc(b.name)}</h3><span class="muted small">≈ ${fmtNum(b.refreshes)} refreshes (${hrs(b.refreshes)})</span></div>
+  const block = (b, top) => `<div class="stack" style="gap:6px">
+      <div class="row" style="justify-content:space-between"><h3>${top ? 'View ' : 'If you view '}${esc(b.name)}</h3><span class="muted small">≈ ${perHour(b.speed)} per hour</span></div>
       <div class="items">${b.rows.map(r => `<div class="item"><div class="nm"><b>${esc(r.t.h.name)}</b> <span class="pill hbk">Sc. ${r.t.scene}</span>${r.t.h.big ? ' <span class="pill">large spot</span>' : ''}<br>
-          <span class="muted">${r.t.rem} view${r.t.rem === 1 ? '' : 's'} to max</span></div>
-        <div class="small" style="text-align:right"><b>${Math.round(r.p * 100)}%</b> per refresh<br><span class="muted">≈ ${fmtNum(r.refreshes)} refreshes</span></div></div>`).join('')}</div></div>`).join('');
-  const wait = L.unplaced.length ? `<p class="small" style="margin:0">Place once the others are done: ${L.unplaced.map(t => `${esc(t.h.name)} Sc. ${t.scene}`).join(', ')}.</p>` : '';
-  // nothing to place in either background → no card at all
-  f.style.display = body ? '' : 'none';
-  f.innerHTML = body ? `<section class="card stack">
-      <div class="row" style="justify-content:space-between"><h2>Recommended layouts</h2><span class="muted small">Handbook scenes</span></div>
-      ${body}${wait}
+          <span class="muted">Lv ${r.t.lv} → ${r.t.next}: ${r.t.need} view${r.t.need === 1 ? '' : 's'}, ${fmtPct(r.t.gain)}</span></div>
+        <div class="small" style="text-align:right"><b>${Math.round(r.p * 100)}%</b> per refresh<br><span class="muted">≈ ${fmtNum(r.refreshes)} refreshes (${hrs(r.refreshes)})</span></div></div>`).join('')}</div></div>`;
+  const [first, ...rest] = L.bgs;
+  f.style.display = first ? '' : 'none';
+  f.innerHTML = first ? `<section class="card stack">
+      <div class="row" style="justify-content:space-between"><h2>Recommended layout</h2><span class="muted small">Handbook scenes</span></div>
+      ${block(first, true)}${rest.map(b => block(b, false)).join('')}
       <p class="muted small" style="margin:0">Leave the other spots empty: extra items take these characters first or push them down the ranking.</p>
-      <p class="muted small" style="margin:0">Scenes refresh every 5 minutes when you open Home. Views left come from the levels entered under Handbook.</p>
+      <p class="muted small" style="margin:0">Only the area you're viewing rolls scenes, every 5 minutes. Each layout is the fastest one for that area, counting what each scene's next Handbook level is worth, so enter level-ups under Handbook and this updates.</p>
     </section>` : '';
 }
 
